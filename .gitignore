@@ -1,0 +1,47 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Telethon session
+*.session
+*.session-journal
+
+# Telegram channel export (исходные данные)
+messages.html
+messages*.html
+/js/
+/css/
+/images/
+/round_video_messages/
+/video_files/
