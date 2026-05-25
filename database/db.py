@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from collections.abc import AsyncIterator
@@ -285,12 +286,87 @@ SEED_PRODUCTS: list[dict] = [
 
 
 async def seed_products() -> None:
+    """Seed the database from two sources, both idempotent.
+
+    1. Built-in ``SEED_PRODUCTS`` — added only if the DB is empty.
+    2. ``seed_data.json`` snapshot of imported channel history —
+       merged in by ``channel_message_id`` (skipping rows that already
+       exist), so it's safe to run repeatedly.
+    """
     async with async_session_factory() as session:
         existing = await session.scalar(select(Product).limit(1))
-        if existing is not None:
-            logger.info("Products already present, skipping seed.")
-            return
+        if existing is None:
+            session.add_all([Product(**payload) for payload in SEED_PRODUCTS])
+            await session.commit()
+            logger.info("Seeded %d built-in products.", len(SEED_PRODUCTS))
+        else:
+            logger.info(
+                "Products already present, skipping built-in seed."
+            )
 
-        session.add_all([Product(**payload) for payload in SEED_PRODUCTS])
-        await session.commit()
-        logger.info("Seeded %d products.", len(SEED_PRODUCTS))
+    await _merge_json_snapshot()
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+async def _merge_json_snapshot() -> None:
+    """Add products from ``seed_data.json`` whose channel_message_id
+    isn't already in the DB. No-op if the file is missing.
+    """
+    snapshot_path = _project_root() / "seed_data.json"
+    if not snapshot_path.exists():
+        return
+
+    try:
+        items = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read seed_data.json: %s", exc)
+        return
+
+    if not items:
+        return
+
+    added = 0
+    skipped = 0
+
+    async with async_session_factory() as session:
+        for item in items:
+            channel_msg_id = item.get("channel_message_id")
+            if channel_msg_id is None:
+                # Only merge channel-sourced entries; built-ins live in code.
+                continue
+
+            existing = await session.scalar(
+                select(Product).where(
+                    Product.channel_message_id == channel_msg_id
+                )
+            )
+            if existing is not None:
+                skipped += 1
+                continue
+
+            payload = dict(item)
+            # Coerce string enum back to the typed values
+            if "status" in payload and payload["status"]:
+                payload["status"] = ProductStatus(payload["status"])
+            if "category" in payload and payload["category"]:
+                payload["category"] = ProductCategory(payload["category"])
+
+            try:
+                session.add(Product(**payload))
+                added += 1
+            except Exception:
+                logger.exception(
+                    "Failed to add product from snapshot (msg %s)",
+                    channel_msg_id,
+                )
+
+        if added:
+            await session.commit()
+
+    logger.info(
+        "Snapshot merge: %d added, %d skipped (already present).",
+        added, skipped,
+    )

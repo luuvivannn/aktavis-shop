@@ -37,6 +37,7 @@ from telethon import TelegramClient  # noqa: E402
 
 from bot.channel_parser import parse_channel_post  # noqa: E402
 from config import (  # noqa: E402
+    CHANNEL_ID,
     CHANNEL_USERNAME,
     PHOTOS_DIR,
     TELEGRAM_API_HASH,
@@ -59,13 +60,23 @@ SESSION_PATH = PROJECT_ROOT / "telethon"
 # Collect channel messages and group them
 # ─────────────────────────────────────────────────────────────
 async def collect_posts(client: TelegramClient, limit: int | None) -> list[list]:
-    print(f"📡 Reading messages from @{CHANNEL_USERNAME}...")
+    # Prefer the numeric channel ID for private channels (no public @username).
+    # Fall back to CHANNEL_USERNAME for public channels.
+    channel_ref: int | str
+    if CHANNEL_ID is not None:
+        channel_ref = CHANNEL_ID
+        label = f"id={CHANNEL_ID}"
+    else:
+        channel_ref = CHANNEL_USERNAME
+        label = f"@{CHANNEL_USERNAME}"
+
+    print(f"📡 Reading messages from channel {label}...")
 
     groups: dict[int, list] = {}
     singles: list = []
 
     total = 0
-    async for msg in client.iter_messages(CHANNEL_USERNAME, limit=limit):
+    async for msg in client.iter_messages(channel_ref, limit=limit):
         total += 1
         if total % 50 == 0:
             print(f"   ... {total} messages read")
