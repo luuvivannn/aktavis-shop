@@ -88,9 +88,21 @@ CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
     ProductCategory.BAGS: (
         "сумк", "клатч", "рюкзак", "backpack", "tote", "пояс",
     ),
+    ProductCategory.JACKETS: (
+        "куртк", "ветровк", "пуховик", "пальто", "плащ", "жилет",
+        "пиджак", "бомбер", "парк", "анорак", "шуб",
+    ),
+    ProductCategory.PANTS: (
+        "штан", "брюк", "джинс", "pants", "trousers", "jeans",
+    ),
+    ProductCategory.TOPS: (
+        "худи", "кофт", "свитшот", "лонгслив", "футболк", "майк",
+        "поло", "толстовк", "свитер", "джемпер", "пуловер", "рубашк",
+    ),
     ProductCategory.ACCESSORIES: (
         "часы", "кольц", "очки", "ремень", "кошел", "шапк",
         "перчатк", "watch", "scarf", "шарф", "брелок", "браслет",
+        "кепк", "панам",
     ),
 }
 
@@ -161,7 +173,8 @@ def _detect_category(title: str) -> ProductCategory:
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in lower for kw in keywords):
             return category
-    return ProductCategory.CLOTHING
+    # Fallback: unknown clothing type. Admin can override at preview time.
+    return ProductCategory.OTHER
 
 
 def _parse_price(text: str) -> tuple[int | None, int | None]:

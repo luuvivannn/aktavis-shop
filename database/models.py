@@ -30,11 +30,16 @@ class ProductStatus(StrEnum):
 
 
 class ProductCategory(StrEnum):
-    CLOTHING = "clothing"
-    SHOES = "shoes"
-    ACCESSORIES = "accessories"
     BAGS = "bags"
+    SHOES = "shoes"
+    TOPS = "tops"            # Кофты / Футболки
+    JACKETS = "jackets"      # Куртки, ветровки, пуховики, жилетки
+    PANTS = "pants"          # Штаны, брюки, джинсы
+    ACCESSORIES = "accessories"
+    CUSTOM_ORDER = "custom_order"  # Special info-only "Под заказ" category
     OTHER = "other"
+    # Legacy — kept for one phase to allow migration rollback; removed in Phase 7
+    CLOTHING = "clothing"
 
 
 class OrderStatus(StrEnum):
