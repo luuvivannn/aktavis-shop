@@ -1,88 +1,80 @@
-import { cart } from "./cart.js";
+// SPA entry point.
+//
+// Routes (hash-based):
+//   #/catalog            catalog grid (default)
+//   #/product/{id}       product detail
+//   #/favorites          favourites list
+//   #/about              shop info
+//   #/custom-order       custom-order info page
+//
+// Direct-link support:
+//   When Telegram opens the Mini App as a Direct Link with a
+//   ``startapp`` parameter (e.g. from a channel post), the value lands
+//   in ``initDataUnsafe.start_param``. We parse it and translate
+//   ``p_42`` into a product-detail route on boot.
+
+import { initTabBar, setActiveTab } from "./components/tab_bar.js";
 import { initTelegram, tg } from "./tg.js";
-import {
-  viewCart,
-  viewCatalog,
-  viewCheckout,
-  viewOrders,
-  viewProduct,
-  viewSuccess,
-} from "./views.js";
+import { viewAbout } from "./views/about.js";
+import { viewCatalog } from "./views/catalog.js";
+import { viewCustomOrder } from "./views/custom_order.js";
+import { viewFavorites } from "./views/favorites.js";
+import { viewProduct } from "./views/product.js";
 
 initTelegram();
-
-// Warn if launched without Telegram auth context (e.g., direct browser visit
-// or ngrok interstitial broke the launch). Order submission won't work.
-if (!tg?.initData) {
-  const banner = document.createElement("div");
-  banner.style.cssText =
-    "background:#ff9500;color:white;padding:10px 14px;font-size:12px;" +
-    "text-align:center;line-height:1.4;position:sticky;top:0;z-index:50;";
-  banner.innerHTML =
-    "⚠️ Откройте магазин через кнопку <b>«🛍 Открыть магазин»</b> в чате " +
-    "с ботом, иначе оформление заказа не сработает.";
-  document.body.insertBefore(banner, document.body.firstChild);
-}
+initTabBar();
 
 const app = document.getElementById("app");
-const cartBadge = document.getElementById("cart-badge");
 
-function updateCartBadge() {
-  const count = cart.count();
-  if (count > 0) {
-    cartBadge.textContent = count;
-    cartBadge.classList.add("visible");
-  } else {
-    cartBadge.textContent = "";
-    cartBadge.classList.remove("visible");
-  }
-}
-
-cart.onChange(updateCartBadge);
-updateCartBadge();
-
-function setActiveTab(route) {
-  document.querySelectorAll(".tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.route === route);
-  });
-}
-
-document.querySelectorAll(".tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    location.hash = tab.dataset.route;
-  });
-});
+// Apply start_param BEFORE the first route() call so a deep link goes
+// straight to the right screen with no flash of the default catalog.
+applyStartParam();
 
 async function route() {
   const hash = location.hash || "#/catalog";
+  setActiveTab(hash);
 
   let m;
   if (!hash || hash === "#" || hash === "#/" || hash === "#/catalog") {
-    setActiveTab("#/catalog");
     return viewCatalog(app);
   }
   if ((m = hash.match(/^#\/product\/(\d+)$/))) {
-    setActiveTab(null);
     return viewProduct(app, m[1]);
   }
-  if (hash === "#/cart") {
-    setActiveTab("#/cart");
-    return viewCart(app);
+  if (hash === "#/favorites") {
+    return viewFavorites(app);
   }
-  if (hash === "#/checkout") {
-    setActiveTab(null);
-    return viewCheckout(app);
+  if (hash === "#/about") {
+    return viewAbout(app);
   }
-  if ((m = hash.match(/^#\/success\/(\d+)$/))) {
-    setActiveTab(null);
-    return viewSuccess(app, m[1]);
-  }
-  if (hash === "#/orders") {
-    setActiveTab("#/orders");
-    return viewOrders(app);
+  if (hash === "#/custom-order") {
+    return viewCustomOrder(app);
   }
 
+  // Unknown route — fall back to catalog.
   location.hash = "#/catalog";
+}
+
+function applyStartParam() {
+  const param = tg?.initDataUnsafe?.start_param;
+  if (!param) return;
+
+  let m;
+  if ((m = param.match(/^p_(\d+)$/))) {
+    location.hash = `#/product/${m[1]}`;
+    return;
+  }
+  if (param === "favorites") {
+    location.hash = "#/favorites";
+    return;
+  }
+  if (param === "about") {
+    location.hash = "#/about";
+    return;
+  }
+  if (param === "custom_order" || param === "custom-order") {
+    location.hash = "#/custom-order";
+  }
 }
 
 window.addEventListener("hashchange", route);
