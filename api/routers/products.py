@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from api.dependencies import DBSession
 from api.schemas import ProductDetail, ProductList, ProductSummary
-from database import ProductCategory, ProductRepository
+from database import ProductRepository
+from database.models import ProductCategory, SortBy
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -15,26 +16,47 @@ router = APIRouter(prefix="/products", tags=["products"])
 async def list_products(
     session: DBSession,
     category: ProductCategory | None = None,
-    brand: str | None = None,
+    size: Annotated[str | None, Query(max_length=20)] = None,
+    sort_by: SortBy = SortBy.NEWEST,
+    price_min: Annotated[int | None, Query(ge=0)] = None,
+    price_max: Annotated[int | None, Query(ge=0)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ProductList:
+    """Catalog listing with filters and sort.
+
+    - ``category`` — limit to a specific category enum value.
+    - ``size`` — substring match against the product's size string
+      (e.g. ``M`` matches ``M (факт M-L)``, ``42`` matches ``6.5 LV (41.5-42.5)``).
+    - ``sort_by`` — ``newest`` | ``price_asc`` | ``price_desc``.
+    - ``price_min`` / ``price_max`` — PLN price range, inclusive.
+    """
     repo = ProductRepository(session)
+
     items = await repo.list_available(
-        category=category, brand=brand, limit=limit, offset=offset
+        category=category,
+        size=size,
+        sort_by=sort_by,
+        price_min=price_min,
+        price_max=price_max,
+        limit=limit,
+        offset=offset,
     )
-    total = await repo.count_available(category=category, brand=brand)
+    total = await repo.count_available(
+        category=category,
+        size=size,
+        price_min=price_min,
+        price_max=price_max,
+    )
+
+    new_ids = await repo.get_new_product_ids()
+
     return ProductList(
-        items=[ProductSummary.model_validate(p) for p in items],
+        items=[_to_summary(p, new_ids) for p in items],
         total=total,
         limit=limit,
         offset=offset,
     )
-
-
-@router.get("/brands", response_model=list[str])
-async def list_brands(session: DBSession) -> list[str]:
-    return await ProductRepository(session).list_brands()
 
 
 @router.get("/search", response_model=list[ProductSummary])
@@ -43,15 +65,29 @@ async def search_products(
     q: Annotated[str, Query(min_length=2, max_length=100)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ProductSummary]:
-    products = await ProductRepository(session).search(q, limit=limit)
-    return [ProductSummary.model_validate(p) for p in products]
+    """Full-text search over brand/name/description."""
+    repo = ProductRepository(session)
+    products = await repo.search(q, limit=limit)
+    new_ids = await repo.get_new_product_ids()
+    return [_to_summary(p, new_ids) for p in products]
 
 
 @router.get("/{product_id}", response_model=ProductDetail)
 async def get_product(product_id: int, session: DBSession) -> ProductDetail:
-    product = await ProductRepository(session).get(product_id)
+    repo = ProductRepository(session)
+    product = await repo.get(product_id)
     if product is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Product not found"
         )
-    return ProductDetail.model_validate(product)
+
+    new_ids = await repo.get_new_product_ids()
+    detail = ProductDetail.model_validate(product)
+    detail.is_new = product.id in new_ids
+    return detail
+
+
+def _to_summary(product, new_ids: set[int]) -> ProductSummary:
+    summary = ProductSummary.model_validate(product)
+    summary.is_new = product.id in new_ids
+    return summary

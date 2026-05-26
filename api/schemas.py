@@ -1,16 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+from pydantic import BaseModel, ConfigDict, field_validator
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from database.models import (
-    DeliveryMethod,
-    OrderStatus,
-    ProductCategory,
-    ProductStatus,
-)
+from database.models import ProductCategory, ProductStatus
 
 
 def _normalize_photo_url(path: str | None) -> str | None:
@@ -22,6 +14,8 @@ def _normalize_photo_url(path: str | None) -> str | None:
 
 
 class ProductSummary(BaseModel):
+    """Compact product representation for catalog grids."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -33,6 +27,7 @@ class ProductSummary(BaseModel):
     price_usdt: int | None
     status: ProductStatus
     main_photo: str | None
+    is_new: bool = False
 
     @field_validator("main_photo", mode="before")
     @classmethod
@@ -41,6 +36,8 @@ class ProductSummary(BaseModel):
 
 
 class ProductDetail(ProductSummary):
+    """Full product view shown on the detail screen."""
+
     condition: str | None
     description: str | None
     note: str | None
@@ -55,58 +52,9 @@ class ProductDetail(ProductSummary):
 
 
 class ProductList(BaseModel):
+    """Paginated catalog response."""
+
     items: list[ProductSummary]
     total: int
     limit: int
     offset: int
-
-
-class CartItemIn(BaseModel):
-    product_id: Annotated[int, Field(gt=0)]
-    quantity: Annotated[int, Field(ge=1, le=10)] = 1
-
-
-class OrderCreateIn(BaseModel):
-    items: Annotated[list[CartItemIn], Field(min_length=1, max_length=20)]
-    delivery_method: DeliveryMethod = DeliveryMethod.COURIER_WARSAW
-    delivery_address: str | None = None
-    phone: Annotated[str | None, Field(max_length=50)] = None
-    full_name: Annotated[str | None, Field(max_length=200)] = None
-    comment: Annotated[str | None, Field(max_length=1000)] = None
-
-
-class OrderItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    product_id: int
-    price_pln: int
-    price_usdt: int | None
-    quantity: int
-    product: ProductSummary
-
-
-class OrderOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: int
-    status: OrderStatus
-    delivery_method: DeliveryMethod
-    delivery_address: str | None
-    phone: str | None
-    full_name: str | None
-    comment: str | None
-    total_pln: int
-    total_usdt: int
-    created_at: datetime
-    items: list[OrderItemOut]
-
-
-class MeOut(BaseModel):
-    id: int
-    username: str | None
-    first_name: str | None
-    last_name: str | None
-    language_code: str | None
-    is_premium: bool

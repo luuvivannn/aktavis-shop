@@ -59,6 +59,13 @@ class DeliveryMethod(StrEnum):
     PICKUP = "pickup"
 
 
+class SortBy(StrEnum):
+    """Sort order for catalog listings."""
+    NEWEST = "newest"
+    PRICE_ASC = "price_asc"
+    PRICE_DESC = "price_desc"
+
+
 class Product(Base):
     __tablename__ = "products"
 
