@@ -18,34 +18,21 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────
-# КОМАНДЫ ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ
-# Это то, что видно всем в синем меню «/».
-# Чтобы добавить новую команду:
-#   1. Создай хендлер в bot/handlers/<файл>.py
-#   2. Добавь сюда строку BotCommand(command="...", description="...")
-# Длина description — до 256 символов, но лучше держать коротко.
+# КОМАНДЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ (видны в синем меню «/»)
 # ─────────────────────────────────────────────────────────────
 USER_COMMANDS: list[BotCommand] = [
     BotCommand(command="start", description="🥤 Главное меню"),
-    BotCommand(command="orders", description="📋 Мои заказы"),
     BotCommand(command="delivery", description="📦 Условия доставки"),
     BotCommand(command="about", description="ℹ️ О магазине"),
     BotCommand(command="contact", description="✉️ Связаться"),
 ]
 
 
-# ─────────────────────────────────────────────────────────────
-# КОМАНДЫ ДЛЯ АДМИНОВ (видны только тем, кто в ADMIN_IDS)
-# Сейчас тут заготовки — допишем хендлеры позже.
-# Пока что Telegram покажет эти команды только админам,
-# но при нажатии бот ответит дефолтным «Не понимаю команду».
-# ─────────────────────────────────────────────────────────────
-ADMIN_COMMANDS: list[BotCommand] = USER_COMMANDS + [
-    BotCommand(command="admin", description="⚙️ Админ-панель"),
-    BotCommand(command="addproduct", description="➕ Добавить товар"),
-    BotCommand(command="orders_all", description="📑 Все заказы"),
-    BotCommand(command="stats", description="📊 Статистика"),
-]
+# Admins see the same set of commands as users — the redesign moved all
+# order management into direct DMs with the seller, so there's nothing
+# admin-specific in the bot anymore (except channel-post previews, which
+# don't need slash commands).
+ADMIN_COMMANDS: list[BotCommand] = USER_COMMANDS
 
 
 async def set_default_commands(bot: Bot) -> None:
@@ -102,7 +89,11 @@ async def set_menu_button(bot: Bot) -> None:
 
 
 async def ensure_admin_commands(bot: Bot, admin_id: int) -> None:
-    """Register admin commands for a specific admin chat (idempotent)."""
+    """Register admin commands for a specific admin chat (idempotent).
+
+    With admin commands collapsed into the user list, this is mostly a
+    no-op these days — kept for compatibility with the /start handler.
+    """
     if admin_id not in ADMIN_IDS:
         return
     try:
