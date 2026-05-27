@@ -38,9 +38,9 @@ export function viewAbout(container) {
     <section class="info-section">
       <h2>✉️ Связь</h2>
       <ul class="contact-list">
-        <li><a href="https://t.me/aktavis_eu" target="_blank">Telegram канал</a></li>
+        <li><a href="https://t.me/+cUh6oXRMk3Q4YWNi" target="_blank">Telegram канал</a></li>
         <li><a href="https://t.me/actavis_feedback" target="_blank">Отзывы</a></li>
-        <li><a href="https://www.instagram.com/actavis.eu" target="_blank">Instagram</a></li>
+        <li><a href="https://www.instagram.com/aktavis.eu/" target="_blank">Instagram</a></li>
       </ul>
     </section>
 
