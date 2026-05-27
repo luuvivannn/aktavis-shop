@@ -50,108 +50,8 @@ async def init_db(*, seed: bool = True) -> None:
         _copy_bundled_photos()
         await seed_products()
 
-    await _auto_reclassify_clothing()
-
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Auto-migration of legacy `clothing` category → new sub-categories.
-# This runs on every startup but is a no-op once all rows are migrated,
-# so it's safe to leave in place during the redesign transition.
-# ──────────────────────────────────────────────────────────────────────
-_SHOES_KEYWORDS = (
-    "тапочк", "trainer", "skate", "sneak", "loaf", "крос", "shoe",
-    "обув", "сандал", "босонож", "ботин", "мокас", "runner", "replica",
-    " b22", " b25", " b27", " b30", " trio",
-)
-_JACKETS_KEYWORDS = (
-    "куртк", "ветровк", "пуховик", "пальто", "плащ", "жилет",
-    "пиджак", "бомбер", "парк", "анорак", "шуб",
-    "jacket", "coat", "vest", "windbreaker",
-)
-_PANTS_KEYWORDS = (
-    "штан", "брюк", "джинс", "pants", "trousers", "jeans",
-)
-_TOPS_KEYWORDS = (
-    "худи", "кофт", "свитшот", "лонгслив", "футболк", "майк",
-    "поло", "толстовк", "свитер", "джемпер", "пуловер", "рубашк",
-    "hoodie", "t-shirt", "tshirt", "tee", "longsleeve", "long sleeve",
-    "sweatshirt", "sweater", "polo", "shirt",
-)
-_BAGS_KEYWORDS = (
-    "сумк", "клатч", "рюкзак", "backpack", "tote", "пояс", " bag",
-)
-_ACCESSORIES_KEYWORDS = (
-    "часы", "кольц", "очки", "ремень", "кошел", "шапк", "перчатк",
-    "watch", "scarf", "шарф", "брелок", "браслет", "кепк", "панам",
-    "sunglasses", "glasses", "belt", "cap",
-)
-
-
-def _classify_legacy_clothing(name: str, description: str) -> ProductCategory:
-    text = (name + " " + (description or "")).lower()
-    if any(kw in text for kw in _SHOES_KEYWORDS):
-        return ProductCategory.SHOES
-    if any(kw in text for kw in _JACKETS_KEYWORDS):
-        return ProductCategory.JACKETS
-    if any(kw in text for kw in _PANTS_KEYWORDS):
-        return ProductCategory.PANTS
-    if any(kw in text for kw in _TOPS_KEYWORDS):
-        return ProductCategory.TOPS
-    if any(kw in text for kw in _BAGS_KEYWORDS):
-        return ProductCategory.BAGS
-    if any(kw in text for kw in _ACCESSORIES_KEYWORDS):
-        return ProductCategory.ACCESSORIES
-    return ProductCategory.OTHER
-
-
-async def _auto_reclassify_clothing() -> None:
-    """Idempotent: reclassify any product still marked 'clothing' on startup.
-
-    Also deletes obviously-junk rows (Unknown brand + name >100 chars, which
-    are typically channel info posts mis-imported as products).
-    """
-    async with async_session_factory() as session:
-        stmt = select(Product).where(Product.category == ProductCategory.CLOTHING)
-        products = list((await session.scalars(stmt)).all())
-
-    if not products:
-        return
-
-    reclassified = 0
-    deleted = 0
-
-    async with async_session_factory() as session:
-        for product in products:
-            # Junk row: no price, no photos, no size — channel info post.
-            is_junk = (
-                (product.price_pln or 0) == 0
-                and not product.photos
-                and not product.size
-            )
-            if is_junk:
-                db_obj = await session.get(Product, product.id)
-                if db_obj is not None:
-                    await session.delete(db_obj)
-                    deleted += 1
-                continue
-
-            new_cat = _classify_legacy_clothing(
-                product.name, product.description or ""
-            )
-            db_obj = await session.get(Product, product.id)
-            if db_obj is not None:
-                db_obj.category = new_cat
-                reclassified += 1
-
-        await session.commit()
-
-    logger.info(
-        "Auto-migration: %d products reclassified, %d junk rows deleted.",
-        reclassified, deleted,
-    )
 
 
 def _copy_bundled_photos() -> None:
@@ -200,6 +100,10 @@ async def _run_migrations() -> None:
             "CREATE INDEX IF NOT EXISTS ix_products_channel_message_id "
             "ON products(channel_message_id)"
         ),
+        # Phase 7: drop legacy order tables. order_items references orders +
+        # products, so it must be dropped first.
+        "DROP TABLE IF EXISTS order_items",
+        "DROP TABLE IF EXISTS orders",
     ]
     for stmt in statements:
         try:
