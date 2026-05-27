@@ -52,6 +52,7 @@ async def init_db(*, seed: bool = True) -> None:
         await seed_products()
 
     await _apply_legacy_data_fixes()
+    await _collapse_duplicates()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -123,6 +124,78 @@ async def _apply_legacy_data_fixes() -> None:
             "Legacy data fixes applied: %d USDT prices, %d EUR prices, "
             "%d Trio rows moved to BAGS.",
             usdt_fixed, eur_fixed, cat_fixed,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Strip Markdown leftovers from existing names and collapse duplicates
+# created by manual re-posts in the channel. Idempotent — after first
+# run there's nothing to do.
+# ──────────────────────────────────────────────────────────────────────
+_MARKDOWN_NOISE_RE = re.compile(r"\*+")
+
+
+def _normalize_name(name: str | None) -> str:
+    if not name:
+        return ""
+    cleaned = _MARKDOWN_NOISE_RE.sub("", name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·,")
+    return cleaned
+
+
+def _dedup_key(p: Product) -> tuple[str, str, str, int]:
+    return (
+        (p.brand or "").strip().lower(),
+        _normalize_name(p.name).lower(),
+        (p.size or "").strip().lower(),
+        p.price_pln or 0,
+    )
+
+
+async def _collapse_duplicates() -> None:
+    renamed = 0
+    deleted = 0
+
+    async with async_session_factory() as session:
+        all_rows = list(
+            (await session.scalars(select(Product).order_by(Product.id))).all()
+        )
+
+        # 1) Clean Markdown noise from names.
+        for product in all_rows:
+            clean = _normalize_name(product.name)
+            if clean and clean != product.name:
+                product.name = clean
+                renamed += 1
+
+        # 2) Group by dedup key. Keep the row with the largest id —
+        #    that's the most recent re-post, with the cleanest source text.
+        groups: dict[tuple, list[Product]] = {}
+        for product in all_rows:
+            groups.setdefault(_dedup_key(product), []).append(product)
+
+        for key, members in groups.items():
+            if len(members) <= 1:
+                continue
+            members.sort(key=lambda p: p.id)
+            survivor = members[-1]
+            for victim in members[:-1]:
+                logger.info(
+                    "Dedup: deleting product id=%s (%s %s, size=%s, %s zł) "
+                    "in favour of id=%s",
+                    victim.id, victim.brand, victim.name,
+                    victim.size, victim.price_pln, survivor.id,
+                )
+                await session.delete(victim)
+                deleted += 1
+
+        if renamed or deleted:
+            await session.commit()
+
+    if renamed or deleted:
+        logger.info(
+            "Duplicate cleanup: %d names normalized, %d duplicate rows removed.",
+            renamed, deleted,
         )
 
 

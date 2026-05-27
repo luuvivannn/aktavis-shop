@@ -243,7 +243,11 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
     if not lines:
         return None
 
-    title = re.sub(r"\s+", " ", lines[0]).strip()
+    # Strip stray Markdown bold markers (`**`) that sometimes survive in
+    # the post caption — they would otherwise end up inside the product
+    # name (e.g. "**Тапочки" instead of "Тапочки").
+    title = re.sub(r"\*+", "", lines[0])
+    title = re.sub(r"\s+", " ", title).strip()
     brand, name = _detect_brand(title)
     category = _detect_category(title)
 
