@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -50,8 +51,65 @@ async def init_db(*, seed: bool = True) -> None:
         _copy_bundled_photos()
         await seed_products()
 
+    await _apply_legacy_data_fixes()
+
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# One-time idempotent data backfill — runs at every startup but only
+# does work on rows that still need fixing. Safe to leave permanently;
+# can be removed in a future cleanup once all known broken rows are
+# migrated everywhere this code runs.
+#
+# Fixes two issues introduced before Phase 6:
+#   1. price_usdt is NULL on rows whose original channel-post caption
+#      had "N USDT" but the old combined PLN+USDT regex didn't match
+#      because of stray Markdown ``**`` markers in the text.
+#   2. Louis Vuitton "Trio" messenger bags were mis-classified as
+#      SHOES by the legacy migrate_categories.py (it had ``" trio"``
+#      in the shoe-keyword list to catch Dior B22-style sneakers).
+# ──────────────────────────────────────────────────────────────────────
+_LEGACY_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
+
+
+async def _apply_legacy_data_fixes() -> None:
+    usdt_fixed = 0
+    cat_fixed = 0
+
+    async with async_session_factory() as session:
+        # 1) Recover missing USDT prices from description text.
+        stmt = select(Product).where(Product.price_usdt.is_(None))
+        for product in (await session.scalars(stmt)).all():
+            m = _LEGACY_USDT_RE.search(product.description or "")
+            if not m:
+                continue
+            try:
+                product.price_usdt = int(re.sub(r"\s", "", m.group(1)))
+            except ValueError:
+                continue
+            usdt_fixed += 1
+
+        # 2) Move LV "Trio" bags out of SHOES into BAGS.
+        stmt = select(Product).where(
+            Product.category == ProductCategory.SHOES,
+            Product.brand.ilike("Louis Vuitton"),
+            Product.name.ilike("%trio%"),
+        )
+        for product in (await session.scalars(stmt)).all():
+            product.category = ProductCategory.BAGS
+            cat_fixed += 1
+
+        if usdt_fixed or cat_fixed:
+            await session.commit()
+
+    if usdt_fixed or cat_fixed:
+        logger.info(
+            "Legacy data fixes applied: %d USDT prices recovered, "
+            "%d Trio rows moved to BAGS.",
+            usdt_fixed, cat_fixed,
+        )
 
 
 def _copy_bundled_photos() -> None:
