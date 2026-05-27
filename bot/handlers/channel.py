@@ -179,7 +179,7 @@ async def _attach_shop_button(product: Product) -> None:
         await bot.edit_message_reply_markup(
             chat_id=product.channel_chat_id,
             message_id=product.channel_message_id,
-            reply_markup=channel_post_buttons(product.id),
+            reply_markup=channel_post_buttons(),
         )
     except TelegramAPIError:
         logger.exception(
