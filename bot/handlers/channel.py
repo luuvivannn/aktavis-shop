@@ -77,6 +77,8 @@ def _format_preview(product: Product, parsed: ParsedProduct) -> str:
         lines.append(f"<b>Состояние:</b> {product.condition}")
 
     price = f"{product.price_pln} zł" if product.price_pln else "?"
+    if product.price_eur:
+        price += f" / {product.price_eur}€"
     if product.price_usdt:
         price += f" / {product.price_usdt} USDT"
     lines.append(f"<b>Цена:</b> {price}")
@@ -235,6 +237,7 @@ async def _process_post(messages: list[Message]) -> None:
             note=parsed.note,
             price_pln=parsed.price_pln or 0,
             price_usdt=parsed.price_usdt,
+            price_eur=parsed.price_eur,
             photos=photo_paths,
             status=ProductStatus.PENDING,
             channel_message_id=first.message_id,

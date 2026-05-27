@@ -112,9 +112,11 @@ PRICE_PLN_RE = re.compile(
     r"Цена\s*[:：\-]?\s*([\d\s,.]+)\s*z[łl]",
     re.IGNORECASE,
 )
-# USDT is extracted independently so we tolerate Markdown remnants like
-# "1450 zł** **/ 350 USDT" that Telegram leaves in the post caption.
+# USDT and EUR are extracted independently so we tolerate Markdown
+# remnants like "1450 zł** **/ 350 USDT" or "3800 zł / 900€" left by
+# Telegram in the post caption.
 PRICE_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
+PRICE_EUR_RE = re.compile(r"(\d[\d\s]*)\s*€")
 NOTE_RE = re.compile(
     r"\*?\s*Примечание\s*[:：]\s*([^\n]+(?:\n(?!Связь|Цена|#|$)[^\n]+)*)",
     re.IGNORECASE,
@@ -144,6 +146,7 @@ class ParsedProduct:
     note: str | None
     price_pln: int | None
     price_usdt: int | None
+    price_eur: int | None
     description: str
     is_sold: bool
     is_in_stock: bool
@@ -179,7 +182,7 @@ def _detect_category(title: str) -> ProductCategory:
     return ProductCategory.OTHER
 
 
-def _parse_price(text: str) -> tuple[int | None, int | None]:
+def _parse_price(text: str) -> tuple[int | None, int | None, int | None]:
     pln: int | None = None
     if (m := PRICE_PLN_RE.search(text)):
         try:
@@ -194,7 +197,14 @@ def _parse_price(text: str) -> tuple[int | None, int | None]:
         except (ValueError, TypeError):
             usdt = None
 
-    return pln, usdt
+    eur: int | None = None
+    if (m := PRICE_EUR_RE.search(text)):
+        try:
+            eur = int(re.sub(r"\s", "", m.group(1)))
+        except (ValueError, TypeError):
+            eur = None
+
+    return pln, usdt, eur
 
 
 def _build_description(text: str) -> str:
@@ -240,7 +250,7 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
     size_match = SIZE_RE.search(text)
     size = size_match.group(1).strip() if size_match else None
 
-    price_pln, price_usdt = _parse_price(text)
+    price_pln, price_usdt, price_eur = _parse_price(text)
 
     condition: str | None = None
     for cond_candidate in CONDITION_RE.findall(text):
@@ -273,6 +283,7 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
         note=note,
         price_pln=price_pln,
         price_usdt=price_usdt,
+        price_eur=price_eur,
         description=description,
         is_sold=is_sold,
         is_in_stock=is_in_stock,

@@ -25,6 +25,7 @@ class ProductSummary(BaseModel):
     size: str | None
     price_pln: int
     price_usdt: int | None
+    price_eur: int | None
     status: ProductStatus
     main_photo: str | None
     is_new: bool = False

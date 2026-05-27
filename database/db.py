@@ -72,10 +72,12 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 #      in the shoe-keyword list to catch Dior B22-style sneakers).
 # ──────────────────────────────────────────────────────────────────────
 _LEGACY_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
+_LEGACY_EUR_RE = re.compile(r"(\d[\d\s]*)\s*€")
 
 
 async def _apply_legacy_data_fixes() -> None:
     usdt_fixed = 0
+    eur_fixed = 0
     cat_fixed = 0
 
     async with async_session_factory() as session:
@@ -91,7 +93,19 @@ async def _apply_legacy_data_fixes() -> None:
                 continue
             usdt_fixed += 1
 
-        # 2) Move LV "Trio" bags out of SHOES into BAGS.
+        # 2) Same for EUR prices (channel switched to € at some point).
+        stmt = select(Product).where(Product.price_eur.is_(None))
+        for product in (await session.scalars(stmt)).all():
+            m = _LEGACY_EUR_RE.search(product.description or "")
+            if not m:
+                continue
+            try:
+                product.price_eur = int(re.sub(r"\s", "", m.group(1)))
+            except ValueError:
+                continue
+            eur_fixed += 1
+
+        # 3) Move LV "Trio" bags out of SHOES into BAGS.
         stmt = select(Product).where(
             Product.category == ProductCategory.SHOES,
             Product.brand.ilike("Louis Vuitton"),
@@ -101,14 +115,14 @@ async def _apply_legacy_data_fixes() -> None:
             product.category = ProductCategory.BAGS
             cat_fixed += 1
 
-        if usdt_fixed or cat_fixed:
+        if usdt_fixed or eur_fixed or cat_fixed:
             await session.commit()
 
-    if usdt_fixed or cat_fixed:
+    if usdt_fixed or eur_fixed or cat_fixed:
         logger.info(
-            "Legacy data fixes applied: %d USDT prices recovered, "
+            "Legacy data fixes applied: %d USDT prices, %d EUR prices, "
             "%d Trio rows moved to BAGS.",
-            usdt_fixed, cat_fixed,
+            usdt_fixed, eur_fixed, cat_fixed,
         )
 
 
@@ -162,6 +176,9 @@ async def _run_migrations() -> None:
         # products, so it must be dropped first.
         "DROP TABLE IF EXISTS order_items",
         "DROP TABLE IF EXISTS orders",
+        # EUR price: channel switched from USDT to EUR mid-life. Both
+        # columns coexist; new posts get price_eur, old ones keep price_usdt.
+        "ALTER TABLE products ADD COLUMN price_eur INTEGER",
     ]
     for stmt in statements:
         try:

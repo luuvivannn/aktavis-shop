@@ -21,8 +21,9 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function formatPrice(pln, usdt) {
+function formatPrice(pln, usdt, eur) {
   let s = `${Number(pln).toLocaleString("pl-PL")} zł`;
+  if (eur) s += ` / ${eur}€`;
   if (usdt) s += ` / ${usdt} USDT`;
   return s;
 }
@@ -47,7 +48,7 @@ export function productCardHtml(p) {
         <div class="card-brand">${escapeHtml(p.brand)}</div>
         <div class="card-name">${escapeHtml(p.name)}</div>
         <div class="card-meta">${sizeText || "&nbsp;"}</div>
-        <div class="card-price">${formatPrice(p.price_pln, p.price_usdt)}</div>
+        <div class="card-price">${formatPrice(p.price_pln, p.price_usdt, p.price_eur)}</div>
       </div>
     </article>
   `;

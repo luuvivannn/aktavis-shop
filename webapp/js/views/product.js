@@ -27,8 +27,9 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function formatPrice(pln, usdt) {
+function formatPrice(pln, usdt, eur) {
   let s = `${Number(pln).toLocaleString("pl-PL")} zł`;
+  if (eur) s += ` / ${eur}€`;
   if (usdt) s += ` / ${usdt} USDT`;
   return s;
 }
@@ -91,7 +92,7 @@ export async function viewProduct(container, id) {
         ${p.condition ? `<div class="row"><span class="label">Состояние</span><span>${escapeHtml(p.condition)}</span></div>` : ""}
         ${p.note ? `<div class="note">⚠️ ${escapeHtml(p.note)}</div>` : ""}
 
-        <div class="price-big">${formatPrice(p.price_pln, p.price_usdt)}</div>
+        <div class="price-big">${formatPrice(p.price_pln, p.price_usdt, p.price_eur)}</div>
 
         ${p.description ? `<pre class="desc">${escapeHtml(p.description)}</pre>` : ""}
       </div>
