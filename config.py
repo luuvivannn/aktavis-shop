@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     )
 
     bot_token: str = Field(alias="BOT_TOKEN")
+    bot_username: str = Field(alias="BOT_USERNAME", default="aktaviuseu_bot")
+    miniapp_short_name: str = Field(alias="MINIAPP_SHORT_NAME", default="shop")
     webapp_url: str = Field(alias="WEBAPP_URL", default="https://example.com/")
     admin_ids: list[int] = Field(alias="ADMIN_IDS", default_factory=list)
 
@@ -60,6 +62,8 @@ class Settings(BaseSettings):
 settings = Settings()  # type: ignore[call-arg]
 
 BOT_TOKEN: str = settings.bot_token
+BOT_USERNAME: str = settings.bot_username.lstrip("@")
+MINIAPP_SHORT_NAME: str = settings.miniapp_short_name
 WEBAPP_URL: str = settings.webapp_url
 ADMIN_IDS: list[int] = settings.admin_ids
 CHANNEL_USERNAME: str = settings.channel_username.lstrip("@")

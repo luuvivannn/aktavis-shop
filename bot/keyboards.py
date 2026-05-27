@@ -8,12 +8,33 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from config import WEBAPP_URL
+from config import BOT_USERNAME, MINIAPP_SHORT_NAME, WEBAPP_URL
 
 BTN_SHOP = "🛍 Открыть магазин"
+BTN_SHOP_OPEN_PRODUCT = "🛍 Открыть в магазине"
 BTN_DELIVERY = "📦 Доставка"
 BTN_ABOUT = "ℹ️ О магазине"
 BTN_CONTACT = "✉️ Связаться"
+
+
+def miniapp_product_url(product_id: int) -> str:
+    return (
+        f"https://t.me/{BOT_USERNAME}/{MINIAPP_SHORT_NAME}"
+        f"?startapp=p_{product_id}"
+    )
+
+
+def channel_post_buttons(product_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=BTN_SHOP_OPEN_PRODUCT,
+                    url=miniapp_product_url(product_id),
+                ),
+            ],
+        ],
+    )
 
 
 def main_menu() -> ReplyKeyboardMarkup:
