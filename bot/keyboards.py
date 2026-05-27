@@ -11,7 +11,6 @@ from aiogram.types import (
 from config import BOT_USERNAME, MINIAPP_SHORT_NAME, WEBAPP_URL
 
 BTN_SHOP = "🛍 Открыть магазин"
-BTN_CATALOG = "🛍 Каталог"
 BTN_DELIVERY = "📦 Доставка"
 BTN_ABOUT = "ℹ️ О магазине"
 BTN_CONTACT = "✉️ Связаться"
@@ -20,19 +19,6 @@ BTN_CONTACT = "✉️ Связаться"
 def miniapp_home_url() -> str:
     """Direct Link to the Mini App catalog landing screen."""
     return f"https://t.me/{BOT_USERNAME}/{MINIAPP_SHORT_NAME}"
-
-
-def channel_post_buttons() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=BTN_CATALOG,
-                    url=miniapp_home_url(),
-                ),
-            ],
-        ],
-    )
 
 
 def main_menu() -> ReplyKeyboardMarkup:

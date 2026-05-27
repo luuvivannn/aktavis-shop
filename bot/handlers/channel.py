@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.bot import get_bot
 from bot.callbacks import ChannelPostAction
 from bot.channel_parser import ParsedProduct, parse_channel_post
-from bot.keyboards import channel_post_buttons
 from bot.media_aggregator import MediaGroupAggregator
 from config import ADMIN_IDS, CHANNEL_ID, CHANNEL_USERNAME, PHOTOS_DIR
 from database import (
@@ -162,32 +161,6 @@ def _cleanup_photos(photos: list[str]) -> None:
             full.unlink(missing_ok=True)
         except Exception:
             logger.exception("Failed to delete photo %s", full)
-
-
-async def _attach_shop_button(product: Product) -> None:
-    """Add the «Открыть в магазине» inline button to the original channel post.
-
-    Requires the bot to be a channel admin with edit-messages permission.
-    Failures are logged but never abort publishing — the product stays
-    IN_STOCK either way.
-    """
-    if not (product.channel_chat_id and product.channel_message_id):
-        return
-
-    bot = get_bot()
-    try:
-        await bot.edit_message_reply_markup(
-            chat_id=product.channel_chat_id,
-            message_id=product.channel_message_id,
-            reply_markup=channel_post_buttons(),
-        )
-    except TelegramAPIError:
-        logger.exception(
-            "Failed to attach shop button to channel post chat=%s msg=%s (product=%s)",
-            product.channel_chat_id,
-            product.channel_message_id,
-            product.id,
-        )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -377,8 +350,6 @@ async def on_preview_action(
         if product.status == ProductStatus.PENDING:
             product.status = ProductStatus.IN_STOCK
             await session.commit()
-
-        await _attach_shop_button(product)
 
         outcome = (
             f"✅ <b>Опубликован</b>\n"
