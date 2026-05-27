@@ -13,6 +13,23 @@ from api.routers import products
 from config import PHOTOS_DIR
 from database import dispose_engine, init_db
 
+
+class NoCacheStaticFiles(StaticFiles):
+    """Serves Mini App assets with no-store cache headers.
+
+    Telegram WebViews (especially Desktop) cache JS/CSS aggressively
+    and ignore conventional revalidation. no-store guarantees every
+    fetch hits the server, so a deploy is immediately visible without
+    asking users to clear cache.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -66,7 +83,7 @@ def create_app() -> FastAPI:
     if WEBAPP_DIR.exists():
         app.mount(
             "/webapp",
-            StaticFiles(directory=WEBAPP_DIR, html=True),
+            NoCacheStaticFiles(directory=WEBAPP_DIR, html=True),
             name="webapp",
         )
     else:
