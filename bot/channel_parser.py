@@ -108,11 +108,13 @@ CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
 
 
 SIZE_RE = re.compile(r"Размер\s*[:：\-]?\s*([^\n]+)", re.IGNORECASE)
-PRICE_RE = re.compile(
-    r"Цена\s*[:：\-]?\s*([\d\s,.]+)\s*z[łl]\s*"
-    r"(?:/\s*(\d[\d\s]*)\s*USDT)?",
+PRICE_PLN_RE = re.compile(
+    r"Цена\s*[:：\-]?\s*([\d\s,.]+)\s*z[łl]",
     re.IGNORECASE,
 )
+# USDT is extracted independently so we tolerate Markdown remnants like
+# "1450 zł** **/ 350 USDT" that Telegram leaves in the post caption.
+PRICE_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
 NOTE_RE = re.compile(
     r"\*?\s*Примечание\s*[:：]\s*([^\n]+(?:\n(?!Связь|Цена|#|$)[^\n]+)*)",
     re.IGNORECASE,
@@ -178,20 +180,20 @@ def _detect_category(title: str) -> ProductCategory:
 
 
 def _parse_price(text: str) -> tuple[int | None, int | None]:
-    match = PRICE_RE.search(text)
-    if not match:
-        return None, None
     pln: int | None = None
-    usdt: int | None = None
-    try:
-        pln = int(re.sub(r"[\s,.]", "", match.group(1)))
-    except (ValueError, TypeError):
-        pln = None
-    if match.group(2):
+    if (m := PRICE_PLN_RE.search(text)):
         try:
-            usdt = int(re.sub(r"\s", "", match.group(2)))
+            pln = int(re.sub(r"[\s,.]", "", m.group(1)))
+        except (ValueError, TypeError):
+            pln = None
+
+    usdt: int | None = None
+    if (m := PRICE_USDT_RE.search(text)):
+        try:
+            usdt = int(re.sub(r"\s", "", m.group(1)))
         except (ValueError, TypeError):
             usdt = None
+
     return pln, usdt
 
 
