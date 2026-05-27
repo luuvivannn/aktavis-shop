@@ -335,6 +335,11 @@ async def on_edited_channel_post(message: Message) -> None:
         if product is None:
             return
 
+        # Skip DUPLICATED rows — they represent stale re-posts and shouldn't
+        # be transitioned to SOLD just because the original post got the tag.
+        if product.status == ProductStatus.DUPLICATED:
+            return
+
         if "#продано" in caption and product.status != ProductStatus.SOLD:
             product.status = ProductStatus.SOLD
             await session.commit()

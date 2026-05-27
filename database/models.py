@@ -22,10 +22,11 @@ class Base(DeclarativeBase):
 
 
 class ProductStatus(StrEnum):
-    PENDING = "pending"      # parsed from channel, awaiting admin approval
+    PENDING = "pending"          # parsed from channel, awaiting admin approval
     IN_STOCK = "in_stock"
     RESERVED = "reserved"
     SOLD = "sold"
+    DUPLICATED = "duplicated"    # soft-deleted by _collapse_duplicates
 
 
 class ProductCategory(StrEnum):

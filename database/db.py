@@ -154,11 +154,27 @@ def _dedup_key(p: Product) -> tuple[str, str, str, int]:
 
 async def _collapse_duplicates() -> None:
     renamed = 0
-    deleted = 0
+    deduped = 0
+
+    # Only consider live rows when looking for duplicates — leaves any
+    # rows already marked DUPLICATED untouched so the merge_snapshot
+    # round-trip can't add them back on next deploy.
+    live_statuses = (
+        ProductStatus.PENDING,
+        ProductStatus.IN_STOCK,
+        ProductStatus.RESERVED,
+        ProductStatus.SOLD,
+    )
 
     async with async_session_factory() as session:
         all_rows = list(
-            (await session.scalars(select(Product).order_by(Product.id))).all()
+            (
+                await session.scalars(
+                    select(Product)
+                    .where(Product.status.in_(live_statuses))
+                    .order_by(Product.id)
+                )
+            ).all()
         )
 
         # 1) Clean Markdown noise from names.
@@ -169,7 +185,7 @@ async def _collapse_duplicates() -> None:
                 renamed += 1
 
         # 2) Group by dedup key. Keep the row with the largest id —
-        #    that's the most recent re-post, with the cleanest source text.
+        #    that's the most recent re-post with the cleanest source.
         groups: dict[tuple, list[Product]] = {}
         for product in all_rows:
             groups.setdefault(_dedup_key(product), []).append(product)
@@ -181,21 +197,21 @@ async def _collapse_duplicates() -> None:
             survivor = members[-1]
             for victim in members[:-1]:
                 logger.info(
-                    "Dedup: deleting product id=%s (%s %s, size=%s, %s zł) "
-                    "in favour of id=%s",
+                    "Dedup: marking product id=%s (%s %s, size=%s, %s zł) "
+                    "as DUPLICATED in favour of id=%s",
                     victim.id, victim.brand, victim.name,
                     victim.size, victim.price_pln, survivor.id,
                 )
-                await session.delete(victim)
-                deleted += 1
+                victim.status = ProductStatus.DUPLICATED
+                deduped += 1
 
-        if renamed or deleted:
+        if renamed or deduped:
             await session.commit()
 
-    if renamed or deleted:
+    if renamed or deduped:
         logger.info(
-            "Duplicate cleanup: %d names normalized, %d duplicate rows removed.",
-            renamed, deleted,
+            "Duplicate cleanup: %d names normalized, %d rows marked DUPLICATED.",
+            renamed, deduped,
         )
 
 
