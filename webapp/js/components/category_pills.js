@@ -7,11 +7,11 @@ import { haptic } from "../tg.js";
 // `null` means "Все" (no filter).
 export const CATEGORIES = [
   { value: null,           label: "Все" },
-  { value: "bags",         label: "Сумки" },
   { value: "shoes",        label: "Обувь" },
   { value: "tops",         label: "Кофты / Футболки" },
   { value: "jackets",      label: "Куртки" },
   { value: "pants",        label: "Штаны" },
+  { value: "bags",         label: "Сумки" },
   { value: "accessories",  label: "Аксессуары" },
   { value: "custom_order", label: "Под заказ" },
 ];
