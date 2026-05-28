@@ -31,13 +31,6 @@ export async function viewCatalog(container) {
   hideMainButton();
   hideBackButton();
 
-  // If user picked the "Под заказ" category, route them to that screen.
-  if (filters.get().category === "custom_order") {
-    location.hash = "#/custom-order";
-    filters.set({ category: null });
-    return;
-  }
-
   container.innerHTML = `
     <header class="header">
       <h1>AKTAVIS.EU</h1>
@@ -91,9 +84,22 @@ export async function viewCatalog(container) {
     refreshFiltersBadge();
 
     const grid = container.querySelector("#products-grid");
+    const f = filters.get();
+
+    // Special "Под заказ" category — show info banner instead of products.
+    if (f.category === "custom_order") {
+      grid.innerHTML = `
+        <div class="custom-order-inline">
+          <img src="img/custom_order_banner.jpg" alt="Под заказ" />
+          <p><b>Привезу вещь любой сложности в самые кратчайшие сроки ‼️</b></p>
+          <p><b>Намного ниже рынка!!!</b></p>
+        </div>
+      `;
+      return;
+    }
+
     grid.innerHTML = `<div class="loading">Загрузка…</div>`;
 
-    const f = filters.get();
     let data;
     try {
       data = await api.listProducts({

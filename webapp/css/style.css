@@ -164,6 +164,25 @@ input:focus, textarea:focus, select:focus {
   padding: 4px 12px 24px;
 }
 
+/* Inline "Под заказ" info card shown inside the catalog grid in place
+   of products when the corresponding pill is selected. Spans both
+   grid columns so it reads as one cohesive block. */
+.custom-order-inline {
+  grid-column: 1 / -1;
+  padding: 8px 4px 16px;
+}
+.custom-order-inline img {
+  width: 100%;
+  border-radius: 14px;
+}
+.custom-order-inline p {
+  margin: 14px 4px 0;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 .card {
   background: var(--section-bg);
   border-radius: 14px;
