@@ -300,7 +300,8 @@ async def on_edited_channel_post(message: Message) -> None:
     if not _matches_channel(message):
         return
 
-    caption = (message.caption or message.text or "").lower()
+    raw_caption = message.caption or message.text or ""
+    caption_lower = raw_caption.lower()
 
     async with async_session_factory() as session:
         repo = ProductRepository(session)
@@ -309,16 +310,76 @@ async def on_edited_channel_post(message: Message) -> None:
             return
 
         # Skip DUPLICATED rows — they represent stale re-posts and shouldn't
-        # be transitioned to SOLD just because the original post got the tag.
+        # be transitioned to SOLD or refreshed just because the original
+        # post got edited.
         if product.status == ProductStatus.DUPLICATED:
             return
 
-        if "#продано" in caption and product.status != ProductStatus.SOLD:
+        # 1) #продано → mark as SOLD and stop. Once it's gone it's gone;
+        # no point refreshing fields on a product that's leaving the catalog.
+        if "#продано" in caption_lower and product.status != ProductStatus.SOLD:
             product.status = ProductStatus.SOLD
             await session.commit()
             logger.info(
                 "Product %s marked SOLD via channel edit (msg=%s)",
                 product.id, message.message_id,
+            )
+            return
+
+        # Already-sold products: skip — they don't appear in the catalog.
+        if product.status == ProductStatus.SOLD:
+            return
+
+        # 2) Re-parse the edited caption and sync editable fields back into
+        # the existing product row. Photos, status and channel-anchor fields
+        # are intentionally left untouched.
+        parsed = parse_channel_post(raw_caption)
+        if parsed is None:
+            return
+
+        # Guard against the parser losing the identity fields on the new
+        # caption — better to skip the update than corrupt the row.
+        if not parsed.brand or parsed.brand == "Unknown" or not parsed.name:
+            logger.info(
+                "Edit ignored — parser could not extract brand/name for "
+                "product %s (msg=%s)",
+                product.id, message.message_id,
+            )
+            return
+
+        changes: list[str] = []
+
+        def _apply(field: str, new_value, *, skip_none: bool = True) -> None:
+            """Overwrite product.<field> with new_value when it differs.
+
+            Optional fields (size, note, etc.) keep their existing value if
+            the parser couldn't extract anything from the new caption — we
+            never want a small format change in the post to silently wipe
+            data out of the catalog.
+            """
+            if new_value is None and skip_none:
+                return
+            old_value = getattr(product, field)
+            if old_value != new_value:
+                setattr(product, field, new_value)
+                changes.append(f"{field}: {old_value!r} → {new_value!r}")
+
+        _apply("brand", parsed.brand, skip_none=False)
+        _apply("name", parsed.name, skip_none=False)
+        _apply("category", parsed.category, skip_none=False)
+        _apply("size", parsed.size)
+        _apply("condition", parsed.condition)
+        _apply("description", parsed.description)
+        _apply("note", parsed.note)
+        _apply("price_pln", parsed.price_pln)
+        _apply("price_usdt", parsed.price_usdt)
+        _apply("price_eur", parsed.price_eur)
+
+        if changes:
+            await session.commit()
+            logger.info(
+                "Product %s refreshed from channel edit (msg=%s): %s",
+                product.id, message.message_id, "; ".join(changes),
             )
 
 
