@@ -53,6 +53,7 @@ async def init_db(*, seed: bool = True) -> None:
 
     await _apply_legacy_data_fixes()
     await _collapse_duplicates()
+    await _hide_admin_curated_products()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -212,6 +213,80 @@ async def _collapse_duplicates() -> None:
         logger.info(
             "Duplicate cleanup: %d names normalized, %d rows marked DUPLICATED.",
             renamed, deduped,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Admin-curated hide list. The shop owner reviewed the catalog and asked
+# to drop products whose channel photos use a non-purple background (off
+# brand). We soft-delete by flipping the row to DUPLICATED — the Mini
+# App filters those out, the actual channel post is left alone. Match
+# key is (brand, name, size, price_pln); identical to the dedup key so
+# collisions are unique enough in practice.
+#
+# Idempotent: once a row is DUPLICATED, the IN_STOCK filter below skips
+# it on subsequent startups. Caveat: if the admin later re-posts the
+# same item with the same exact price, the new row would also match and
+# get auto-hidden — in that case remove the offending tuple from this
+# list before deploying.
+# ──────────────────────────────────────────────────────────────────────
+_ADMIN_HIDE_LIST: tuple[tuple[str, str, str, int], ...] = (
+    ("CELINE",                 "Худи",         "L",                 1450),
+    ("Stone Island",           "Зип-Худи",     "M (факт M-L)",       900),
+    ("C.P. Company",           "Ветровка",     "L",                  999),
+    ("Moncler",                "Жилетка",      "5 (L-XL)",          1450),
+    ("Stone Island x Supreme", "Пуховик",      "M",                 4500),
+    ("Maison Margiela",        "Худи",         "Xs (факт M-L)",     1050),
+    ("Louis Vuitton",          "Trainer",      "7LV (42-43)",       1600),
+    ("Dior",                   "B25 Runners",  "43",                1800),
+    ("Louis Vuitton",          "Trainer",      "7LV (42-43)",       1450),
+    ("Dior",                   "B27 High-Top", "41",                 950),
+    ("Maison Margiela",        "Replica",      "42",                1450),
+    ("Gucci",                  "Тапочки",      "42",                 900),
+)
+
+
+async def _hide_admin_curated_products() -> None:
+    hidden = 0
+    unmatched: list[tuple[str, str, str, int]] = []
+
+    async with async_session_factory() as session:
+        for brand, name, size, price_pln in _ADMIN_HIDE_LIST:
+            stmt = select(Product).where(
+                Product.brand.ilike(brand),
+                Product.name.ilike(name),
+                Product.size.ilike(size),
+                Product.price_pln == price_pln,
+                Product.status == ProductStatus.IN_STOCK,
+            )
+            matches = (await session.scalars(stmt)).all()
+            if not matches:
+                unmatched.append((brand, name, size, price_pln))
+                continue
+            for product in matches:
+                logger.info(
+                    "Admin-hide: marking product id=%s (%s %s, size=%s, %s zł, "
+                    "channel_msg=%s) as DUPLICATED",
+                    product.id, product.brand, product.name,
+                    product.size, product.price_pln,
+                    product.channel_message_id,
+                )
+                product.status = ProductStatus.DUPLICATED
+                hidden += 1
+
+        if hidden:
+            await session.commit()
+
+    if hidden:
+        logger.info("Admin hide list applied: %d products hidden.", hidden)
+    # On subsequent startups every entry will be "unmatched" because the
+    # rows are already DUPLICATED — that's the desired steady state, so
+    # only log loudly when nothing matched on the very first run.
+    elif unmatched and len(unmatched) == len(_ADMIN_HIDE_LIST):
+        logger.debug(
+            "Admin hide list: nothing to do (all %d entries already hidden "
+            "or not present).",
+            len(unmatched),
         )
 
 
