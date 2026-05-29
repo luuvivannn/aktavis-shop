@@ -52,9 +52,13 @@ async def init_db(*, seed: bool = True) -> None:
         await seed_products()
 
     await _apply_legacy_data_fixes()
+    # message_id hide runs BEFORE dedup so the dedup hook sees the right
+    # survivor set — otherwise it can promote a deliberately-hidden
+    # duplicate to the canonical row, undoing the admin's intent.
+    await _hide_admin_message_ids()
     await _collapse_duplicates()
     await _hide_admin_curated_products()
-    await _hide_admin_message_ids()
+    await _unhide_admin_message_ids()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -331,6 +335,49 @@ async def _hide_admin_message_ids() -> None:
     if hidden:
         logger.info(
             "Admin hide by msg_id applied: %d products hidden.", hidden,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Inverse of the hide list — message_ids that should be restored to
+# IN_STOCK if a prior dedup pass mistakenly marked them DUPLICATED.
+# The created_at timestamp is preserved, so a restored product won't
+# look "new" in the catalog. Idempotent: once a row is IN_STOCK, the
+# status filter below skips it.
+# ──────────────────────────────────────────────────────────────────────
+_ADMIN_UNHIDE_MESSAGE_IDS: tuple[int, ...] = (
+    364,  # original LV Trainer WaterProofed 8.5 (was swept up by dedup
+          # when the duplicate at msg_id 493 was added)
+)
+
+
+async def _unhide_admin_message_ids() -> None:
+    if not _ADMIN_UNHIDE_MESSAGE_IDS:
+        return
+
+    restored = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(
+            Product.channel_message_id.in_(_ADMIN_UNHIDE_MESSAGE_IDS),
+            Product.status == ProductStatus.DUPLICATED,
+        )
+        for product in (await session.scalars(stmt)).all():
+            logger.info(
+                "Admin-restore (by msg_id): marking product id=%s (%s %s, "
+                "size=%s, %s zł, channel_msg=%s) as IN_STOCK",
+                product.id, product.brand, product.name,
+                product.size, product.price_pln,
+                product.channel_message_id,
+            )
+            product.status = ProductStatus.IN_STOCK
+            restored += 1
+
+        if restored:
+            await session.commit()
+
+    if restored:
+        logger.info(
+            "Admin unhide by msg_id applied: %d products restored.", restored,
         )
 
 
