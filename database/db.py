@@ -54,6 +54,7 @@ async def init_db(*, seed: bool = True) -> None:
     await _apply_legacy_data_fixes()
     await _collapse_duplicates()
     await _hide_admin_curated_products()
+    await _hide_admin_message_ids()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -287,6 +288,49 @@ async def _hide_admin_curated_products() -> None:
             "Admin hide list: nothing to do (all %d entries already hidden "
             "or not present).",
             len(unmatched),
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Precise hide list — products identified by their original channel
+# message_id. Used when the dedup-by-(brand+name+size+price) key would
+# catch innocent siblings too, e.g. when the admin accidentally
+# re-published an item that was already in the catalog and wants to
+# drop only the new duplicate while keeping the original. Idempotent:
+# once flipped to DUPLICATED nothing matches anymore.
+# ──────────────────────────────────────────────────────────────────────
+_ADMIN_HIDE_MESSAGE_IDS: tuple[int, ...] = (
+    493,  # accidental duplicate of LV Trainer WaterProofed 8.5
+)
+
+
+async def _hide_admin_message_ids() -> None:
+    if not _ADMIN_HIDE_MESSAGE_IDS:
+        return
+
+    hidden = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(
+            Product.channel_message_id.in_(_ADMIN_HIDE_MESSAGE_IDS),
+            Product.status == ProductStatus.IN_STOCK,
+        )
+        for product in (await session.scalars(stmt)).all():
+            logger.info(
+                "Admin-hide (by msg_id): marking product id=%s (%s %s, "
+                "size=%s, %s zł, channel_msg=%s) as DUPLICATED",
+                product.id, product.brand, product.name,
+                product.size, product.price_pln,
+                product.channel_message_id,
+            )
+            product.status = ProductStatus.DUPLICATED
+            hidden += 1
+
+        if hidden:
+            await session.commit()
+
+    if hidden:
+        logger.info(
+            "Admin hide by msg_id applied: %d products hidden.", hidden,
         )
 
 
