@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     channel_username: str = Field(alias="CHANNEL_USERNAME", default="")
     channel_id: int | None = Field(alias="CHANNEL_ID", default=None)
 
+    # Database backup: the bot DMs a fresh copy of shop.db to this chat
+    # on a timer and on /backup. Falls back to the first admin if unset.
+    backup_chat_id: int | None = Field(alias="BACKUP_CHAT_ID", default=None)
+    backup_interval_hours: int = Field(
+        alias="BACKUP_INTERVAL_HOURS", default=24
+    )
+
     telegram_api_id: int | None = Field(alias="TELEGRAM_API_ID", default=None)
     telegram_api_hash: str = Field(alias="TELEGRAM_API_HASH", default="")
 
@@ -68,6 +75,8 @@ WEBAPP_URL: str = settings.webapp_url
 ADMIN_IDS: list[int] = settings.admin_ids
 CHANNEL_USERNAME: str = settings.channel_username.lstrip("@")
 CHANNEL_ID: int | None = settings.channel_id
+BACKUP_CHAT_ID: int | None = settings.backup_chat_id
+BACKUP_INTERVAL_HOURS: int = settings.backup_interval_hours
 TELEGRAM_API_ID: int | None = settings.telegram_api_id
 TELEGRAM_API_HASH: str = settings.telegram_api_hash
 

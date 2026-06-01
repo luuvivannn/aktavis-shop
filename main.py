@@ -8,6 +8,7 @@ import uvicorn
 
 from api.app import app as fastapi_app
 from bot import create_dispatcher, get_bot, shutdown_bot
+from bot.backup import backup_loop
 from bot.commands import set_default_commands, set_menu_button
 from config import API_HOST, API_PORT
 from database import dispose_engine, init_db
@@ -42,6 +43,12 @@ async def run_bot() -> None:
     await dispatcher.start_polling(bot, handle_signals=False)
 
 
+async def run_backup() -> None:
+    # Shares the single bot instance with run_bot(). The loop never raises,
+    # so a failed backup can't trip FIRST_EXCEPTION and take the shop down.
+    await backup_loop(get_bot())
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -54,6 +61,7 @@ async def main() -> None:
     tasks: set[asyncio.Task] = {
         asyncio.create_task(run_api(), name="api"),
         asyncio.create_task(run_bot(), name="bot"),
+        asyncio.create_task(run_backup(), name="backup"),
     }
 
     try:

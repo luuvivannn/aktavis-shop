@@ -34,6 +34,7 @@ async def shutdown_bot() -> None:
 
 
 def create_dispatcher() -> Dispatcher:
+    from bot import backup
     from bot.handlers import setup_handlers
     from bot.middlewares import DbSessionMiddleware
 
@@ -44,4 +45,5 @@ def create_dispatcher() -> Dispatcher:
     dp.callback_query.middleware(db_mw)
 
     setup_handlers(dp)
+    dp.include_router(backup.router)
     return dp
