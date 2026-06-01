@@ -127,6 +127,46 @@ def _preview_keyboard(product_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def _published_keyboard(product_id: int) -> InlineKeyboardMarkup:
+    """Shown after publish — lets the admin hide a live product later."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🙈 Скрыть из каталога",
+                    callback_data=ChannelPostAction(
+                        product_id=product_id, action="hide"
+                    ).pack(),
+                ),
+            ],
+        ]
+    )
+
+
+def _hidden_keyboard(product_id: int) -> InlineKeyboardMarkup:
+    """Shown after hide — lets the admin bring the product back."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="👁 Вернуть в каталог",
+                    callback_data=ChannelPostAction(
+                        product_id=product_id, action="show"
+                    ).pack(),
+                ),
+            ],
+        ]
+    )
+
+
+def _published_text(product: Product) -> str:
+    return f"✅ <b>В каталоге</b>\n#{product.id} {product.brand} {product.name}"
+
+
+def _hidden_text(product: Product) -> str:
+    return f"🙈 <b>Скрыт</b>\n#{product.id} {product.brand} {product.name}"
+
+
 async def _download_photos(messages: list[Message]) -> list[str]:
     """Download largest photo from each message; return list of relative paths."""
     bot = get_bot()
@@ -407,16 +447,33 @@ async def on_preview_action(
                 pass
         return
 
+    outcome = ""
+    markup: InlineKeyboardMarkup | None = None
+
     if callback_data.action == "publish":
         if product.status == ProductStatus.PENDING:
             product.status = ProductStatus.IN_STOCK
             await session.commit()
+        outcome = _published_text(product)
+        markup = _published_keyboard(product.id)
+        await query.answer("В каталоге")
 
-        outcome = (
-            f"✅ <b>Опубликован</b>\n"
-            f"#{product.id} {product.brand} {product.name}"
-        )
-        await query.answer("Опубликован")
+    elif callback_data.action == "hide":
+        if product.status == ProductStatus.HIDDEN:
+            await query.answer("Уже скрыт")
+            return
+        product.status = ProductStatus.HIDDEN
+        await session.commit()
+        outcome = _hidden_text(product)
+        markup = _hidden_keyboard(product.id)
+        await query.answer("Скрыт из каталога")
+
+    elif callback_data.action == "show":
+        product.status = ProductStatus.IN_STOCK
+        await session.commit()
+        outcome = _published_text(product)
+        markup = _published_keyboard(product.id)
+        await query.answer("Вернул в каталог")
 
     elif callback_data.action == "skip":
         if product.status != ProductStatus.PENDING:
@@ -438,6 +495,6 @@ async def on_preview_action(
 
     if query.message:
         try:
-            await query.message.edit_text(outcome)
+            await query.message.edit_text(outcome, reply_markup=markup)
         except TelegramAPIError:
             logger.exception("Failed to edit preview message")

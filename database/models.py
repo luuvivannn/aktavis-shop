@@ -26,7 +26,8 @@ class ProductStatus(StrEnum):
     IN_STOCK = "in_stock"
     RESERVED = "reserved"
     SOLD = "sold"
-    DUPLICATED = "duplicated"    # soft-deleted by _collapse_duplicates
+    DUPLICATED = "duplicated"    # soft-deleted by _collapse_duplicates (machine)
+    HIDDEN = "hidden"            # manually hidden by the admin from the bot
 
 
 class ProductCategory(StrEnum):

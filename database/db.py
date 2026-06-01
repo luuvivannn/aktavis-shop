@@ -52,13 +52,15 @@ async def init_db(*, seed: bool = True) -> None:
         await seed_products()
 
     await _apply_legacy_data_fixes()
-    # message_id hide runs BEFORE dedup so the dedup hook sees the right
-    # survivor set — otherwise it can promote a deliberately-hidden
-    # duplicate to the canonical row, undoing the admin's intent.
-    await _hide_admin_message_ids()
+    # Known accidental duplicates are enforced BEFORE dedup so the dedup
+    # hook sees the right survivor set — otherwise it can promote a
+    # deliberately-hidden re-post to the canonical row.
+    await _enforce_known_accidental_dups()
     await _collapse_duplicates()
-    await _hide_admin_curated_products()
-    await _unhide_admin_message_ids()
+    # One-time: relabel the admin's historical curation hides (currently
+    # DUPLICATED) as HIDDEN, so manual hides are distinct from machine
+    # dedup and can be restored from the bot. Inert once converted.
+    await _migrate_curated_hides_to_hidden()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -222,20 +224,17 @@ async def _collapse_duplicates() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Admin-curated hide list. The shop owner reviewed the catalog and asked
-# to drop products whose channel photos use a non-purple background (off
-# brand). We soft-delete by flipping the row to DUPLICATED — the Mini
-# App filters those out, the actual channel post is left alone. Match
-# key is (brand, name, size, price_pln); identical to the dedup key so
-# collisions are unique enough in practice.
+# One-time migration seed. These products were curated-hidden by the
+# admin (off-brand photo backgrounds) back when hiding meant flipping the
+# row to DUPLICATED. They now move to the dedicated HIDDEN status so they
+# show up in the bot's /hidden list and can be restored from there.
 #
-# Idempotent: once a row is DUPLICATED, the IN_STOCK filter below skips
-# it on subsequent startups. Caveat: if the admin later re-posts the
-# same item with the same exact price, the new row would also match and
-# get auto-hidden — in that case remove the offending tuple from this
-# list before deploying.
+# This list is historical: NEW hides/restores happen live from the bot,
+# not by editing code. Match key is (brand, name, size, price_pln).
+# Idempotent — once a row is HIDDEN it no longer matches the DUPLICATED
+# filter below, so this becomes a no-op on every later startup.
 # ──────────────────────────────────────────────────────────────────────
-_ADMIN_HIDE_LIST: tuple[tuple[str, str, str, int], ...] = (
+_CURATED_HIDE_SEED: tuple[tuple[str, str, str, int], ...] = (
     ("CELINE",                 "Худи",         "L",                 1450),
     ("Stone Island",           "Зип-Худи",     "M (факт M-L)",       900),
     ("C.P. Company",           "Ветровка",     "L",                  999),
@@ -251,82 +250,68 @@ _ADMIN_HIDE_LIST: tuple[tuple[str, str, str, int], ...] = (
 )
 
 
-async def _hide_admin_curated_products() -> None:
-    hidden = 0
-    unmatched: list[tuple[str, str, str, int]] = []
+async def _migrate_curated_hides_to_hidden() -> None:
+    migrated = 0
 
     async with async_session_factory() as session:
-        for brand, name, size, price_pln in _ADMIN_HIDE_LIST:
+        for brand, name, size, price_pln in _CURATED_HIDE_SEED:
             stmt = select(Product).where(
                 Product.brand.ilike(brand),
                 Product.name.ilike(name),
                 Product.size.ilike(size),
                 Product.price_pln == price_pln,
-                Product.status == ProductStatus.IN_STOCK,
+                Product.status == ProductStatus.DUPLICATED,
             )
-            matches = (await session.scalars(stmt)).all()
-            if not matches:
-                unmatched.append((brand, name, size, price_pln))
-                continue
-            for product in matches:
+            for product in (await session.scalars(stmt)).all():
                 logger.info(
-                    "Admin-hide: marking product id=%s (%s %s, size=%s, %s zł, "
-                    "channel_msg=%s) as DUPLICATED",
+                    "Curated-hide migration: product id=%s (%s %s, size=%s, "
+                    "%s zł) DUPLICATED → HIDDEN",
                     product.id, product.brand, product.name,
                     product.size, product.price_pln,
-                    product.channel_message_id,
                 )
-                product.status = ProductStatus.DUPLICATED
-                hidden += 1
+                product.status = ProductStatus.HIDDEN
+                migrated += 1
 
-        if hidden:
+        if migrated:
             await session.commit()
 
-    if hidden:
-        logger.info("Admin hide list applied: %d products hidden.", hidden)
-    # On subsequent startups every entry will be "unmatched" because the
-    # rows are already DUPLICATED — that's the desired steady state, so
-    # only log loudly when nothing matched on the very first run.
-    elif unmatched and len(unmatched) == len(_ADMIN_HIDE_LIST):
-        logger.debug(
-            "Admin hide list: nothing to do (all %d entries already hidden "
-            "or not present).",
-            len(unmatched),
+    if migrated:
+        logger.info(
+            "Curated-hide migration: %d products moved to HIDDEN.", migrated
         )
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Precise hide list — products identified by their original channel
-# message_id. Used when the dedup-by-(brand+name+size+price) key would
-# catch innocent siblings too, e.g. when the admin accidentally
-# re-published an item that was already in the catalog and wants to
-# drop only the new duplicate while keeping the original. Idempotent:
-# once flipped to DUPLICATED nothing matches anymore.
+# Known accidental duplicates, identified by their original channel
+# message_id. These are genuine re-posts of an item already in the
+# catalog — they must never appear in the shop. Enforced every startup
+# BEFORE dedup so the surviving original is never the one that gets
+# swept up. Kept hidden permanently; not part of the bot's restorable
+# /hidden flow (restoring one would just resurrect the duplicate).
 # ──────────────────────────────────────────────────────────────────────
-_ADMIN_HIDE_MESSAGE_IDS: tuple[int, ...] = (
+_KNOWN_ACCIDENTAL_DUP_MSG_IDS: tuple[int, ...] = (
     493,  # accidental duplicate of LV Trainer WaterProofed 8.5
 )
 
 
-async def _hide_admin_message_ids() -> None:
-    if not _ADMIN_HIDE_MESSAGE_IDS:
+async def _enforce_known_accidental_dups() -> None:
+    if not _KNOWN_ACCIDENTAL_DUP_MSG_IDS:
         return
 
     hidden = 0
     async with async_session_factory() as session:
         stmt = select(Product).where(
-            Product.channel_message_id.in_(_ADMIN_HIDE_MESSAGE_IDS),
-            Product.status == ProductStatus.IN_STOCK,
+            Product.channel_message_id.in_(_KNOWN_ACCIDENTAL_DUP_MSG_IDS),
+            Product.status != ProductStatus.HIDDEN,
         )
         for product in (await session.scalars(stmt)).all():
             logger.info(
-                "Admin-hide (by msg_id): marking product id=%s (%s %s, "
-                "size=%s, %s zł, channel_msg=%s) as DUPLICATED",
+                "Enforcing accidental-dup hide: product id=%s (%s %s, "
+                "channel_msg=%s) → HIDDEN",
                 product.id, product.brand, product.name,
-                product.size, product.price_pln,
                 product.channel_message_id,
             )
-            product.status = ProductStatus.DUPLICATED
+            product.status = ProductStatus.HIDDEN
             hidden += 1
 
         if hidden:
@@ -334,50 +319,7 @@ async def _hide_admin_message_ids() -> None:
 
     if hidden:
         logger.info(
-            "Admin hide by msg_id applied: %d products hidden.", hidden,
-        )
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Inverse of the hide list — message_ids that should be restored to
-# IN_STOCK if a prior dedup pass mistakenly marked them DUPLICATED.
-# The created_at timestamp is preserved, so a restored product won't
-# look "new" in the catalog. Idempotent: once a row is IN_STOCK, the
-# status filter below skips it.
-# ──────────────────────────────────────────────────────────────────────
-_ADMIN_UNHIDE_MESSAGE_IDS: tuple[int, ...] = (
-    364,  # original LV Trainer WaterProofed 8.5 (was swept up by dedup
-          # when the duplicate at msg_id 493 was added)
-)
-
-
-async def _unhide_admin_message_ids() -> None:
-    if not _ADMIN_UNHIDE_MESSAGE_IDS:
-        return
-
-    restored = 0
-    async with async_session_factory() as session:
-        stmt = select(Product).where(
-            Product.channel_message_id.in_(_ADMIN_UNHIDE_MESSAGE_IDS),
-            Product.status == ProductStatus.DUPLICATED,
-        )
-        for product in (await session.scalars(stmt)).all():
-            logger.info(
-                "Admin-restore (by msg_id): marking product id=%s (%s %s, "
-                "size=%s, %s zł, channel_msg=%s) as IN_STOCK",
-                product.id, product.brand, product.name,
-                product.size, product.price_pln,
-                product.channel_message_id,
-            )
-            product.status = ProductStatus.IN_STOCK
-            restored += 1
-
-        if restored:
-            await session.commit()
-
-    if restored:
-        logger.info(
-            "Admin unhide by msg_id applied: %d products restored.", restored,
+            "Accidental-dup enforcement: %d products hidden.", hidden,
         )
 
 

@@ -28,11 +28,12 @@ USER_COMMANDS: list[BotCommand] = [
 ]
 
 
-# Admins see the same set of commands as users — the redesign moved all
-# order management into direct DMs with the seller, so there's nothing
-# admin-specific in the bot anymore (except channel-post previews, which
-# don't need slash commands).
-ADMIN_COMMANDS: list[BotCommand] = USER_COMMANDS
+# Admins get the user set plus catalog-curation commands. These are
+# registered per-admin-chat scope, so regular users never see them.
+ADMIN_COMMANDS: list[BotCommand] = [
+    *USER_COMMANDS,
+    BotCommand(command="hidden", description="🙈 Скрытые товары"),
+]
 
 
 async def set_default_commands(bot: Bot) -> None:
