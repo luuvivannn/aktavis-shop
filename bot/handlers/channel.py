@@ -524,10 +524,6 @@ async def _process_comment_photos(messages: list[Message]) -> None:
     (re)arm the preview debounce or, if the preview already went out, notify
     the admin of the late additions."""
     first = messages[0]
-    logger.info(
-        "Comment batch received: %d msg(s), thread=%s",
-        len(messages), first.message_thread_id,
-    )
     post_id = _resolve_post_id(first)
     if post_id is None:
         logger.info(
@@ -539,16 +535,7 @@ async def _process_comment_photos(messages: list[Message]) -> None:
     photo_msgs = [m for m in messages if m.photo and _is_from_admin(m)]
     if not photo_msgs:
         logger.info(
-            "Comment batch for post %s dropped — no admin-authored photos "
-            "(senders: %s)",
-            post_id,
-            [
-                (
-                    m.from_user.id if m.from_user else None,
-                    m.sender_chat.id if m.sender_chat else None,
-                )
-                for m in messages
-            ],
+            "Comment photos for post %s ignored — not from an admin", post_id
         )
         return
 
@@ -596,32 +583,6 @@ _aggregator = MediaGroupAggregator(callback=_process_post, timeout=2.5)
 _comment_aggregator = MediaGroupAggregator(
     callback=_process_comment_photos, timeout=2.5
 )
-
-
-# ── TEMP diagnostic ──────────────────────────────────────────
-# Logs every message the bot receives in a group/supergroup, with the fields
-# that matter for comment-photo routing, BEFORE any handler/filter runs.
-# Remove once comment-photo ingestion is confirmed working.
-async def _log_incoming_group_message(handler, event, data):
-    chat = getattr(event, "chat", None)
-    if chat is not None and getattr(chat, "type", None) in ("group", "supergroup"):
-        reply = getattr(event, "reply_to_message", None)
-        logger.info(
-            "🔎 group msg: chat=%s thread=%s auto_fwd=%s photo=%s mgid=%s "
-            "from_user=%s sender_chat=%s reply_fwd_from=%s",
-            chat.id,
-            event.message_thread_id,
-            event.is_automatic_forward,
-            bool(event.photo),
-            event.media_group_id,
-            event.from_user.id if event.from_user else None,
-            event.sender_chat.id if event.sender_chat else None,
-            getattr(reply, "forward_from_message_id", None) if reply else None,
-        )
-    return await handler(event, data)
-
-
-router.message.outer_middleware(_log_incoming_group_message)
 
 
 @router.channel_post()
