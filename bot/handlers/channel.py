@@ -3,10 +3,17 @@
 Listens to posts (and edits) in the configured channel, parses them and
 either drafts a new product (pending admin confirmation) or marks an
 existing product as sold.
+
+Also collects extra product photos that the admin drops into the post's
+comment thread (the channel's linked discussion group): the channel post's
+preview is debounced so all comment photos can be gathered into a single
+preview/album before the admin is pinged. Requires the bot to be an admin
+of the discussion group so it receives those messages.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -67,6 +74,33 @@ CATEGORY_PICKER: tuple[ProductCategory, ...] = (
 
 def _category_label(category: ProductCategory) -> str:
     return CATEGORY_LABELS.get(category, str(category))
+
+
+# ─────────────────────────────────────────────────────────────
+# Comment-photo collection (linked discussion group)
+# ─────────────────────────────────────────────────────────────
+# After a channel post lands we wait a bit for the admin to drop extra
+# photos into its comment thread, then send ONE preview with the full album.
+#
+#   GRACE  — how long to wait after the post for the first comment photo
+#            (also the max delay before the preview goes out for a post that
+#            never gets comments).
+#   SETTLE — after each comment photo, how long to keep waiting for more
+#            before firing the preview.
+PREVIEW_GRACE_SECONDS = 60.0
+PREVIEW_SETTLE_SECONDS = 10.0
+
+# In-memory maps (single-instance bot; cleared on restart, which is fine —
+# they only matter for the short window between a post and its comments).
+#   _thread_to_post   discussion-group thread root msg id -> channel post id
+#   _preview_tasks    channel post id -> pending debounced-preview timer task
+#   _preview_sent     channel post ids whose preview has already been sent
+_thread_to_post: dict[int, int] = {}
+_preview_tasks: dict[int, asyncio.Task] = {}
+_preview_sent: set[int] = set()
+# Serialises the read-modify-write of product.photos when several comment
+# photos for the same post arrive back-to-back.
+_comment_append_lock = asyncio.Lock()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -317,12 +351,15 @@ async def _process_post(messages: list[Message]) -> None:
         await session.commit()
         await session.refresh(product)
         product_id = product.id
-        # expire_on_commit=False keeps the instance usable after the session
-        # closes, so the preview/keyboard can read product.category below.
-        preview_text = _format_preview(product)
 
-    await _send_preview_to_admins(product, preview_text, photo_paths)
-    logger.info("Created PENDING product %s from channel post %s", product_id, first.message_id)
+    # Don't ping the admin yet — give them a window to drop extra photos into
+    # the post's comment thread, then send one preview with the full album.
+    _schedule_preview(first.message_id, PREVIEW_GRACE_SECONDS)
+    logger.info(
+        "Created PENDING product %s from channel post %s — preview scheduled "
+        "in %.0fs (waiting for comment photos)",
+        product_id, first.message_id, PREVIEW_GRACE_SECONDS,
+    )
 
 
 async def _send_preview_to_admins(
@@ -353,9 +390,190 @@ async def _send_preview_to_admins(
 
 
 # ─────────────────────────────────────────────────────────────
+# Debounced preview send (after comment photos are collected)
+# ─────────────────────────────────────────────────────────────
+def _schedule_preview(channel_message_id: int, delay: float) -> None:
+    """(Re)arm the debounce timer that sends the preview for a post.
+
+    Called once when the post lands (``GRACE``) and again after each comment
+    photo (``SETTLE``); the latest call wins, so the preview fires only once
+    the album has stopped growing.
+    """
+    existing = _preview_tasks.get(channel_message_id)
+    if existing is not None:
+        existing.cancel()
+    _preview_tasks[channel_message_id] = asyncio.create_task(
+        _preview_timer(channel_message_id, delay)
+    )
+
+
+async def _preview_timer(channel_message_id: int, delay: float) -> None:
+    try:
+        await asyncio.sleep(delay)
+    except asyncio.CancelledError:
+        return
+    _preview_tasks.pop(channel_message_id, None)
+    # Guard against a late re-schedule racing with an in-flight send.
+    if channel_message_id in _preview_sent:
+        return
+    try:
+        sent = await _send_preview_for(channel_message_id)
+        if sent:
+            _preview_sent.add(channel_message_id)
+    except Exception:
+        logger.exception(
+            "Failed to send debounced preview for post %s", channel_message_id
+        )
+
+
+async def _send_preview_for(channel_message_id: int) -> bool:
+    """Load the pending product for a post and send its preview. Returns
+    True if a preview was actually sent."""
+    async with async_session_factory() as session:
+        repo = ProductRepository(session)
+        product = await repo.get_by_channel_message_id(channel_message_id)
+        if product is None or product.status != ProductStatus.PENDING:
+            return False
+        preview_text = _format_preview(product)
+        photos = list(product.photos or [])
+        photo_count = len(photos)
+        product_id = product.id
+
+    await _send_preview_to_admins(product, preview_text, photos)
+    logger.info(
+        "Sent preview for product %s (post %s) with %d photo(s)",
+        product_id, channel_message_id, photo_count,
+    )
+    return True
+
+
+# ─────────────────────────────────────────────────────────────
+# Comment-photo ingestion (linked discussion group)
+# ─────────────────────────────────────────────────────────────
+def _is_from_admin(message: Message) -> bool:
+    """True if the message was authored by an admin (as a user, or posted
+    'as the channel' from the linked channel)."""
+    if message.from_user and message.from_user.id in ADMIN_IDS:
+        return True
+    if (
+        message.sender_chat is not None
+        and CHANNEL_ID is not None
+        and message.sender_chat.id == CHANNEL_ID
+    ):
+        return True
+    return False
+
+
+def _resolve_post_id(message: Message) -> int | None:
+    """Map a comment message back to its original channel post id."""
+    thread_id = message.message_thread_id
+    if thread_id is not None and thread_id in _thread_to_post:
+        return _thread_to_post[thread_id]
+    # Fallback: a top-level comment replies to the auto-forwarded post, which
+    # carries the original channel message id.
+    root = message.reply_to_message
+    root_post_id = getattr(root, "forward_from_message_id", None) if root else None
+    if root_post_id:
+        if thread_id is not None:
+            _thread_to_post[thread_id] = root_post_id
+        return root_post_id
+    return None
+
+
+async def _download_comment_photo(post_id: int, message: Message) -> str | None:
+    bot = get_bot()
+    largest = message.photo[-1]
+    filename = f"channel_{post_id}_c{message.message_id}.jpg"
+    relative = f"photos/{filename}"
+    full_path = PHOTOS_DIR / filename
+    try:
+        await bot.download(largest, destination=full_path)
+        return relative
+    except TelegramAPIError:
+        logger.exception(
+            "Failed to download comment photo (post %s, msg %s)",
+            post_id, message.message_id,
+        )
+        return None
+
+
+async def _notify_extra_photos(product_id: int, added: int, total: int) -> None:
+    """Ping admins when photos land after the preview was already sent."""
+    if not ADMIN_IDS:
+        return
+    bot = get_bot()
+    text = (
+        f"📎 К #{product_id} добавлено ещё {added} фото из комментариев "
+        f"(всего {total})."
+    )
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text)
+        except TelegramAPIError:
+            logger.exception("Failed to notify admin %s of extra photos", admin_id)
+
+
+async def _process_comment_photos(messages: list[Message]) -> None:
+    """Attach admin-posted comment photos to the pending product and either
+    (re)arm the preview debounce or, if the preview already went out, notify
+    the admin of the late additions."""
+    first = messages[0]
+    post_id = _resolve_post_id(first)
+    if post_id is None:
+        logger.info(
+            "Comment photos in thread %s not linked to any post — ignoring",
+            first.message_thread_id,
+        )
+        return
+
+    photo_msgs = [m for m in messages if m.photo and _is_from_admin(m)]
+    if not photo_msgs:
+        return
+
+    # Download outside the lock (network I/O), then do a quick guarded update.
+    downloaded: list[str] = []
+    for msg in photo_msgs:
+        path = await _download_comment_photo(post_id, msg)
+        if path:
+            downloaded.append(path)
+    if not downloaded:
+        return
+
+    async with _comment_append_lock:
+        async with async_session_factory() as session:
+            repo = ProductRepository(session)
+            product = await repo.get_by_channel_message_id(post_id)
+            if product is None or product.status != ProductStatus.PENDING:
+                logger.info(
+                    "Comment photos for post %s dropped — product missing or "
+                    "no longer pending",
+                    post_id,
+                )
+                return
+            # Reassign (not .append) so SQLAlchemy persists the JSON change.
+            product.photos = list(product.photos or []) + downloaded
+            await session.commit()
+            total = len(product.photos)
+            product_id = product.id
+
+    logger.info(
+        "Attached %d comment photo(s) to product %s (post %s, total %d)",
+        len(downloaded), product_id, post_id, total,
+    )
+
+    if post_id in _preview_sent:
+        await _notify_extra_photos(product_id, len(downloaded), total)
+    else:
+        _schedule_preview(post_id, PREVIEW_SETTLE_SECONDS)
+
+
+# ─────────────────────────────────────────────────────────────
 # Aiogram routes
 # ─────────────────────────────────────────────────────────────
 _aggregator = MediaGroupAggregator(callback=_process_post, timeout=2.5)
+_comment_aggregator = MediaGroupAggregator(
+    callback=_process_comment_photos, timeout=2.5
+)
 
 
 @router.channel_post()
@@ -384,6 +602,38 @@ async def on_channel_post(message: Message) -> None:
         return
 
     await _aggregator.add(message)
+
+
+@router.message(F.is_automatic_forward)
+async def on_discussion_autoforward(message: Message) -> None:
+    """The linked discussion group auto-forwards every channel post.
+
+    We use that forward to learn the mapping
+    ``group thread root id -> original channel post id`` so comment photos
+    in the thread can later be attached to the right product.
+    """
+    sender = message.sender_chat
+    if CHANNEL_ID is not None and (sender is None or sender.id != CHANNEL_ID):
+        return  # an auto-forward from some other channel — not ours
+
+    post_id = getattr(message, "forward_from_message_id", None)
+    if post_id is None and message.forward_origin is not None:
+        post_id = getattr(message.forward_origin, "message_id", None)
+    if post_id is None:
+        return
+
+    _thread_to_post[message.message_id] = post_id
+    logger.info(
+        "Linked discussion thread %s -> channel post %s (group %s)",
+        message.message_id, post_id, message.chat.id,
+    )
+
+
+@router.message(F.photo, F.message_thread_id, ~F.is_automatic_forward)
+async def on_discussion_comment_photo(message: Message) -> None:
+    """A photo posted as a comment under a channel post. Buffer it through the
+    media-group aggregator so albums are attached in one batch."""
+    await _comment_aggregator.add(message)
 
 
 @router.edited_channel_post()
