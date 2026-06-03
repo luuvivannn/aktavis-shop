@@ -451,15 +451,21 @@ async def _send_preview_for(channel_message_id: int) -> bool:
 # Comment-photo ingestion (linked discussion group)
 # ─────────────────────────────────────────────────────────────
 def _is_from_admin(message: Message) -> bool:
-    """True if the message was authored by an admin (as a user, or posted
-    'as the channel' from the linked channel)."""
+    """True if the comment was authored by an admin.
+
+    An admin can post in the discussion group in three ways:
+      • as their own account          -> from_user.id in ADMIN_IDS
+      • as the channel                -> sender_chat == the channel
+      • anonymously as a group admin  -> sender_chat == the discussion group
+        (Telegram sets from_user to GroupAnonymousBot in this case)
+
+    Only chat admins can post "as a chat", so any non-None ``sender_chat`` on
+    a comment is itself an admin signal. Regular user comments have
+    ``sender_chat is None`` and a non-admin ``from_user``, so they're excluded.
+    """
     if message.from_user and message.from_user.id in ADMIN_IDS:
         return True
-    if (
-        message.sender_chat is not None
-        and CHANNEL_ID is not None
-        and message.sender_chat.id == CHANNEL_ID
-    ):
+    if message.sender_chat is not None:
         return True
     return False
 
