@@ -2,20 +2,24 @@
 
 Expected post layout (Russian):
 
-    Ветровка C.P. Company
-    Размер : L
-    - Идеальное состояние
-    Цена : 999 zł / 275 USDT
+    Louis Vuitton Outdoor
+    Размер : OS (средняя)
+    - Хорошее состояние
+    Цена : 590€ (в другой валюте по запросу)
 
     Связь / покупка : @aktavis_eu
-
     #вналичии
 
+The shop now prices in EUR; older posts used "999 zł / 275 USDT". The
+parser extracts EUR, PLN and USDT independently, so any combination works
+and legacy zł/USDT posts keep parsing.
+
 Parser is tolerant to small variations:
-    - "Цена :1450 zł" (no space) and "Цена : 1 450 zł" (thousands separator)
+    - "Цена :590€" (no space) and "Цена : 1 200 €" (thousands separator)
     - "-Новый" without space after dash
     - "*Примечание : ..." prefix
     - "🔊VERY RARE🔊" marker
+    - trailing notes after the price, e.g. "590€ (в другой валюте по запросу)"
 """
 
 from __future__ import annotations
@@ -131,6 +135,9 @@ SKIP_DESC_PATTERNS = (
     "#продано",
     "@aktavis_eu",
     "@actavis_eu",
+    # Promo footer the admin appends to posts — keep it out of the catalog.
+    "БОТ С НАЛИЧИЕМ",
+    "t.me/",
 )
 
 
@@ -152,9 +159,18 @@ class ParsedProduct:
     is_in_stock: bool
 
     @property
+    def price_primary(self) -> int | None:
+        """The canonical price for sorting/display: EUR first, PLN fallback.
+
+        The shop prices in EUR now; ``price_pln`` is kept only so legacy
+        zł posts/products still show and sort.
+        """
+        return self.price_eur or self.price_pln
+
+    @property
     def is_valid(self) -> bool:
         """A post is considered parseable if at least a brand and price exist."""
-        return bool(self.brand and self.price_pln)
+        return bool(self.brand and self.price_primary)
 
 
 def _detect_brand(title: str) -> tuple[str, str]:

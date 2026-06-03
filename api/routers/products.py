@@ -29,7 +29,8 @@ async def list_products(
     - ``size`` — substring match against the product's size string
       (e.g. ``M`` matches ``M (факт M-L)``, ``42`` matches ``6.5 LV (41.5-42.5)``).
     - ``sort_by`` — ``newest`` | ``price_asc`` | ``price_desc``.
-    - ``price_min`` / ``price_max`` — PLN price range, inclusive.
+    - ``price_min`` / ``price_max`` — EUR price range (PLN for legacy
+      zł-only products), inclusive.
     """
     repo = ProductRepository(session)
 

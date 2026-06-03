@@ -22,10 +22,14 @@ function escapeHtml(s) {
 }
 
 function formatPrice(pln, usdt, eur) {
-  let s = `${Number(pln).toLocaleString("pl-PL")} zł`;
-  if (eur) s += ` / ${eur}€`;
-  if (usdt) s += ` / ${usdt} USDT`;
-  return s;
+  // EUR is the active currency. Legacy products without € fall back to zł.
+  if (eur) return `${Number(eur).toLocaleString("pl-PL")}€`;
+  if (pln) {
+    let s = `${Number(pln).toLocaleString("pl-PL")} zł`;
+    if (usdt) s += ` / ${usdt} USDT`;
+    return s;
+  }
+  return "—";
 }
 
 export function productCardHtml(p) {

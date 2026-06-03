@@ -23,12 +23,13 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.bot import get_bot
-from bot.callbacks import ChannelPostAction
-from bot.channel_parser import ParsedProduct, parse_channel_post
+from bot.callbacks import ChannelPostAction, ChannelPostCategory
+from bot.channel_parser import parse_channel_post
 from bot.media_aggregator import MediaGroupAggregator
 from config import ADMIN_IDS, CHANNEL_ID, CHANNEL_USERNAME, PHOTOS_DIR
 from database import (
     Product,
+    ProductCategory,
     ProductRepository,
     ProductStatus,
     async_session_factory,
@@ -39,6 +40,33 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Human-readable category labels (RU) for the preview text and picker.
+CATEGORY_LABELS: dict[ProductCategory, str] = {
+    ProductCategory.BAGS: "👜 Сумки",
+    ProductCategory.SHOES: "👟 Обувь",
+    ProductCategory.TOPS: "👕 Верх",
+    ProductCategory.JACKETS: "🧥 Куртки",
+    ProductCategory.PANTS: "👖 Штаны",
+    ProductCategory.ACCESSORIES: "🧢 Аксессуары",
+    ProductCategory.OTHER: "📦 Другое",
+}
+
+# Order + membership of the category picker shown under a pending preview.
+# CUSTOM_ORDER is an info-only pseudo-category and intentionally excluded.
+CATEGORY_PICKER: tuple[ProductCategory, ...] = (
+    ProductCategory.BAGS,
+    ProductCategory.SHOES,
+    ProductCategory.TOPS,
+    ProductCategory.JACKETS,
+    ProductCategory.PANTS,
+    ProductCategory.ACCESSORIES,
+    ProductCategory.OTHER,
+)
+
+
+def _category_label(category: ProductCategory) -> str:
+    return CATEGORY_LABELS.get(category, str(category))
 
 
 # ─────────────────────────────────────────────────────────────
@@ -62,22 +90,28 @@ def _matches_channel(message: Message) -> bool:
     return False
 
 
-def _format_preview(product: Product, parsed: ParsedProduct) -> str:
+def _format_preview(product: Product) -> str:
     lines = [
         "📥 <b>Новый пост из канала</b>",
         "",
         f"<b>Бренд:</b> {product.brand}",
         f"<b>Название:</b> {product.name}",
-        f"<b>Категория:</b> {product.category}",
+        f"<b>Категория:</b> {_category_label(product.category)}",
     ]
     if product.size:
         lines.append(f"<b>Размер:</b> {product.size}")
     if product.condition:
         lines.append(f"<b>Состояние:</b> {product.condition}")
 
-    price = f"{product.price_pln} zł" if product.price_pln else "?"
+    # EUR is the active currency; show it first, keep zł/USDT as legacy extras.
     if product.price_eur:
-        price += f" / {product.price_eur}€"
+        price = f"{product.price_eur}€"
+        if product.price_pln:
+            price += f" / {product.price_pln} zł"
+    elif product.price_pln:
+        price = f"{product.price_pln} zł"
+    else:
+        price = "?"
     if product.price_usdt:
         price += f" / {product.price_usdt} USDT"
     lines.append(f"<b>Цена:</b> {price}")
@@ -91,40 +125,63 @@ def _format_preview(product: Product, parsed: ParsedProduct) -> str:
     warnings = []
     if product.brand == "Unknown":
         warnings.append("⚠️ Бренд не распознан")
-    if not product.price_pln:
+    if not (product.price_eur or product.price_pln):
         warnings.append("⚠️ Цена не извлечена")
     if not product.size:
         warnings.append("⚠️ Размер не найден")
-    if parsed.is_sold:
-        warnings.append("⚠️ Пост помечен #продано")
+    if product.category == ProductCategory.OTHER:
+        warnings.append("⚠️ Категория не распознана — выбери ниже")
 
     if warnings:
         lines.extend(warnings)
         lines.append("")
 
-    lines.append("Опубликовать в магазин?")
+    lines.append("Категория ниже — поправь если нужно, потом публикуй 👇")
     return "\n".join(lines)
 
 
-def _preview_keyboard(product_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Опубликовать",
-                    callback_data=ChannelPostAction(
-                        product_id=product_id, action="publish"
-                    ).pack(),
-                ),
-                InlineKeyboardButton(
-                    text="❌ Пропустить",
-                    callback_data=ChannelPostAction(
-                        product_id=product_id, action="skip"
-                    ).pack(),
-                ),
-            ],
+def _preview_keyboard(product: Product) -> InlineKeyboardMarkup:
+    """Pending-preview keyboard: a category picker + publish/skip row.
+
+    The currently-assigned category is marked with a ✅ so the admin can
+    re-tap another one to fix mis-detected categories before publishing.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for cat in CATEGORY_PICKER:
+        label = CATEGORY_LABELS[cat]
+        text = f"✅ {label}" if cat == product.category else label
+        row.append(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=ChannelPostCategory(
+                    product_id=product.id, category=cat.value
+                ).pack(),
+            )
+        )
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🟢 Опубликовать",
+                callback_data=ChannelPostAction(
+                    product_id=product.id, action="publish"
+                ).pack(),
+            ),
+            InlineKeyboardButton(
+                text="❌ Пропустить",
+                callback_data=ChannelPostAction(
+                    product_id=product.id, action="skip"
+                ).pack(),
+            ),
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _published_keyboard(product_id: int) -> InlineKeyboardMarkup:
@@ -260,21 +317,23 @@ async def _process_post(messages: list[Message]) -> None:
         await session.commit()
         await session.refresh(product)
         product_id = product.id
-        preview_text = _format_preview(product, parsed)
+        # expire_on_commit=False keeps the instance usable after the session
+        # closes, so the preview/keyboard can read product.category below.
+        preview_text = _format_preview(product)
 
-    await _send_preview_to_admins(product_id, preview_text, photo_paths)
+    await _send_preview_to_admins(product, preview_text, photo_paths)
     logger.info("Created PENDING product %s from channel post %s", product_id, first.message_id)
 
 
 async def _send_preview_to_admins(
-    product_id: int, preview_text: str, photo_paths: list[str]
+    product: Product, preview_text: str, photo_paths: list[str]
 ) -> None:
     if not ADMIN_IDS:
         logger.warning("ADMIN_IDS empty — cannot send channel preview")
         return
 
     bot = get_bot()
-    keyboard = _preview_keyboard(product_id)
+    keyboard = _preview_keyboard(product)
 
     for admin_id in ADMIN_IDS:
         try:
@@ -498,3 +557,57 @@ async def on_preview_action(
             await query.message.edit_text(outcome, reply_markup=markup)
         except TelegramAPIError:
             logger.exception("Failed to edit preview message")
+
+
+# ─────────────────────────────────────────────────────────────
+# Admin preview — change category before publishing
+# ─────────────────────────────────────────────────────────────
+@router.callback_query(ChannelPostCategory.filter())
+async def on_category_change(
+    query: CallbackQuery,
+    callback_data: ChannelPostCategory,
+    session: AsyncSession,
+) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админов", show_alert=True)
+        return
+
+    try:
+        new_category = ProductCategory(callback_data.category)
+    except ValueError:
+        await query.answer("Неизвестная категория", show_alert=True)
+        return
+
+    repo = ProductRepository(session)
+    product = await repo.get(callback_data.product_id)
+    if product is None:
+        await query.answer("Товар не найден", show_alert=True)
+        return
+
+    # Category is only editable while the product is still a pending draft.
+    if product.status != ProductStatus.PENDING:
+        await query.answer(
+            "Категорию можно менять только до публикации", show_alert=True
+        )
+        return
+
+    if product.category == new_category:
+        await query.answer("Уже выбрана")
+        return
+
+    product.category = new_category
+    await session.commit()
+    await session.refresh(product)
+
+    await query.answer(f"Категория: {_category_label(new_category)}")
+    if query.message:
+        try:
+            await query.message.edit_text(
+                _format_preview(product),
+                reply_markup=_preview_keyboard(product),
+            )
+        except TelegramAPIError:
+            logger.exception(
+                "Failed to refresh preview after category change (product %s)",
+                product.id,
+            )

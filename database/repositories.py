@@ -117,18 +117,22 @@ class ProductRepository:
         if size is not None and size.strip():
             # Substring match: filter "M" finds "M", "M (факт M-L)", etc.
             stmt = stmt.where(Product.size.ilike(f"%{size.strip()}%"))
+        # EUR is the active currency; fall back to PLN for legacy zł-only
+        # products so they still sort and filter sensibly.
+        price_expr = func.coalesce(Product.price_eur, Product.price_pln)
         if price_min is not None:
-            stmt = stmt.where(Product.price_pln >= price_min)
+            stmt = stmt.where(price_expr >= price_min)
         if price_max is not None:
-            stmt = stmt.where(Product.price_pln <= price_max)
+            stmt = stmt.where(price_expr <= price_max)
         return stmt
 
     @staticmethod
     def _apply_catalog_sort(stmt, sort_by: SortBy):
+        price_expr = func.coalesce(Product.price_eur, Product.price_pln)
         if sort_by == SortBy.PRICE_ASC:
-            return stmt.order_by(Product.price_pln.asc(), Product.id.desc())
+            return stmt.order_by(price_expr.asc(), Product.id.desc())
         if sort_by == SortBy.PRICE_DESC:
-            return stmt.order_by(Product.price_pln.desc(), Product.id.desc())
+            return stmt.order_by(price_expr.desc(), Product.id.desc())
         # NEWEST (default)
         return stmt.order_by(Product.created_at.desc(), Product.id.desc())
 

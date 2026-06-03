@@ -54,7 +54,12 @@ def _render_hidden(products: list[Product]) -> tuple[str, InlineKeyboardMarkup |
     lines = [f"🙈 <b>Скрытые товары ({len(products)})</b>", ""]
     rows: list[list[InlineKeyboardButton]] = []
     for p in products:
-        price = f"{p.price_pln} zł" if p.price_pln else "?"
+        if p.price_eur:
+            price = f"{p.price_eur}€"
+        elif p.price_pln:
+            price = f"{p.price_pln} zł"
+        else:
+            price = "?"
         lines.append(f"#{p.id} · {p.brand} {p.name} · {price}")
         rows.append(
             [

@@ -58,7 +58,7 @@ export function openFilterSheet(onApply) {
       ` : ""}
 
       <section class="sheet-section">
-        <h3>Цена, zł</h3>
+        <h3>Цена, €</h3>
         <div class="price-range">
           <input type="number" class="price-input" id="price-min" placeholder="от" min="0" value="${current.price_min ?? ""}" />
           <span>—</span>

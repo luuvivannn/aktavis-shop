@@ -156,7 +156,10 @@ def _dedup_key(p: Product) -> tuple[str, str, str, int]:
         (p.brand or "").strip().lower(),
         _normalize_name(p.name).lower(),
         (p.size or "").strip().lower(),
-        p.price_pln or 0,
+        # EUR-priced products have price_pln == 0, so key on the active
+        # currency first — otherwise two distinct €-items with the same
+        # brand/name/size would collapse into one.
+        p.price_eur or p.price_pln or 0,
     )
 
 

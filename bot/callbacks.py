@@ -17,6 +17,17 @@ class ChannelPostAction(CallbackData, prefix="cp"):
     action: str
 
 
+class ChannelPostCategory(CallbackData, prefix="cpcat"):
+    """Callback for re-assigning a pending product's category from the preview.
+
+    ``category`` is a :class:`ProductCategory` value. Only allowed while the
+    product is still PENDING (i.e. before the admin publishes it).
+    """
+
+    product_id: int
+    category: str
+
+
 class HiddenListAction(CallbackData, prefix="hl"):
     """Callback for the ``/hidden`` list — restore a hidden product.
 
