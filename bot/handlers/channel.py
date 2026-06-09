@@ -729,6 +729,33 @@ async def on_edited_channel_post(message: Message) -> None:
         _apply("condition", parsed.condition)
         _apply("description", parsed.description)
         _apply("note", parsed.note)
+        # Sale-price tracking: when the price drops, save the old value as
+        # the "original" (strikethrough) price shown in the Mini App.
+        # If the price is later raised back to or above the original, clear it.
+        if parsed.price_eur is not None and product.price_eur is not None:
+            if parsed.price_eur < product.price_eur:
+                if product.price_eur_original is None:
+                    product.price_eur_original = product.price_eur
+                    changes.append(f"price_eur_original: None → {product.price_eur!r}")
+            elif (
+                product.price_eur_original is not None
+                and parsed.price_eur >= product.price_eur_original
+            ):
+                product.price_eur_original = None
+                changes.append("price_eur_original: cleared")
+
+        if parsed.price_pln is not None and product.price_pln is not None:
+            if parsed.price_pln < product.price_pln:
+                if product.price_pln_original is None:
+                    product.price_pln_original = product.price_pln
+                    changes.append(f"price_pln_original: None → {product.price_pln!r}")
+            elif (
+                product.price_pln_original is not None
+                and parsed.price_pln >= product.price_pln_original
+            ):
+                product.price_pln_original = None
+                changes.append("price_pln_original: cleared")
+
         _apply("price_pln", parsed.price_pln)
         _apply("price_usdt", parsed.price_usdt)
         _apply("price_eur", parsed.price_eur)

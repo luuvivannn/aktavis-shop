@@ -379,6 +379,9 @@ async def _run_migrations() -> None:
         # EUR price: channel switched from USDT to EUR mid-life. Both
         # columns coexist; new posts get price_eur, old ones keep price_usdt.
         "ALTER TABLE products ADD COLUMN price_eur INTEGER",
+        # Sale price tracking: original price shown as strikethrough when discounted.
+        "ALTER TABLE products ADD COLUMN price_eur_original INTEGER",
+        "ALTER TABLE products ADD COLUMN price_pln_original INTEGER",
     ]
     for stmt in statements:
         try:

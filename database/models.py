@@ -69,6 +69,8 @@ class Product(Base):
     price_pln: Mapped[int] = mapped_column(Integer)
     price_usdt: Mapped[int | None] = mapped_column(Integer)
     price_eur: Mapped[int | None] = mapped_column(Integer)
+    price_eur_original: Mapped[int | None] = mapped_column(Integer, default=None)
+    price_pln_original: Mapped[int | None] = mapped_column(Integer, default=None)
 
     photos: Mapped[list[str]] = mapped_column(JSON, default=list)
 

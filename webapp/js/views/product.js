@@ -27,11 +27,19 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function formatPrice(pln, usdt, eur) {
+function formatPrice(pln, usdt, eur, plnOrig = null, eurOrig = null) {
   // EUR is the active currency. Legacy products without € fall back to zł.
-  if (eur) return `${Number(eur).toLocaleString("pl-PL")}€`;
+  if (eur) {
+    const cur = `${Number(eur).toLocaleString("pl-PL")}€`;
+    if (eurOrig && eurOrig > eur)
+      return `<span class="price-original">${Number(eurOrig).toLocaleString("pl-PL")}€</span> ${cur}`;
+    return cur;
+  }
   if (pln) {
-    let s = `${Number(pln).toLocaleString("pl-PL")} zł`;
+    const cur = `${Number(pln).toLocaleString("pl-PL")} zł`;
+    if (plnOrig && plnOrig > pln)
+      return `<span class="price-original">${Number(plnOrig).toLocaleString("pl-PL")} zł</span> ${cur}`;
+    let s = cur;
     if (usdt) s += ` / ${usdt} USDT`;
     return s;
   }
@@ -96,7 +104,7 @@ export async function viewProduct(container, id) {
         ${p.condition ? `<div class="row"><span class="label">Состояние</span><span>${escapeHtml(p.condition)}</span></div>` : ""}
         ${p.note ? `<div class="note">⚠️ ${escapeHtml(p.note)}</div>` : ""}
 
-        <div class="price-big">${formatPrice(p.price_pln, p.price_usdt, p.price_eur)}</div>
+        <div class="price-big">${formatPrice(p.price_pln, p.price_usdt, p.price_eur, p.price_pln_original, p.price_eur_original)}</div>
 
         ${p.description ? `<pre class="desc">${escapeHtml(p.description)}</pre>` : ""}
       </div>

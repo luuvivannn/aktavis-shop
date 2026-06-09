@@ -229,6 +229,7 @@ input:focus, textarea:focus, select:focus {
 }
 .card-meta { font-size: 11px; color: var(--hint); margin-top: 2px; min-height: 1.2em; }
 .card-price { font-size: 13px; font-weight: 700; margin-top: 4px; }
+.price-original { text-decoration: line-through; opacity: 0.45; font-weight: 400; }
 
 /* ── NEW badge ─────────────────────────── */
 .badge-new {
@@ -352,6 +353,7 @@ input:focus, textarea:focus, select:focus {
   margin: 16px 0 8px;
   letter-spacing: -0.02em;
 }
+.price-big .price-original { font-size: 18px; }
 
 .desc {
   white-space: pre-wrap;
