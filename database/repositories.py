@@ -43,6 +43,26 @@ class ProductRepository:
         )
         return await self.session.scalar(stmt)
 
+    async def find_in_stock_by_brand_name(
+        self, brand: str, name: str
+    ) -> Product | None:
+        """Fallback lookup for products without channel_message_id.
+
+        Returns the single IN_STOCK match for brand+name, or None if there
+        are zero or multiple matches (ambiguous).
+        """
+        stmt = (
+            select(Product)
+            .where(
+                Product.brand == brand,
+                Product.name == name,
+                Product.status == ProductStatus.IN_STOCK,
+            )
+            .order_by(Product.id.desc())
+        )
+        rows = list((await self.session.scalars(stmt)).all())
+        return rows[0] if len(rows) == 1 else None
+
     async def delete(self, product: Product) -> None:
         await self.session.delete(product)
         await self.session.flush()

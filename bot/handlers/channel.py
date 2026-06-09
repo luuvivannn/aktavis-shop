@@ -665,7 +665,28 @@ async def on_edited_channel_post(message: Message) -> None:
         repo = ProductRepository(session)
         product = await repo.get_by_channel_message_id(message.message_id)
         if product is None:
-            return
+            # Fallback for legacy products that pre-date channel_message_id
+            # tracking: if the edit adds #продано, try to find the product by
+            # brand + name so we can still mark it sold.
+            if "#продано" not in caption_lower:
+                return
+            parsed_for_sold = parse_channel_post(raw_caption)
+            if (
+                parsed_for_sold is None
+                or not parsed_for_sold.brand
+                or parsed_for_sold.brand == "Unknown"
+                or not parsed_for_sold.name
+            ):
+                return
+            product = await repo.find_in_stock_by_brand_name(
+                parsed_for_sold.brand, parsed_for_sold.name
+            )
+            if product is None:
+                logger.info(
+                    "Sold fallback: no unique IN_STOCK match for %r %r (msg=%s)",
+                    parsed_for_sold.brand, parsed_for_sold.name, message.message_id,
+                )
+                return
 
         # Skip DUPLICATED rows — they represent stale re-posts and shouldn't
         # be transitioned to SOLD or refreshed just because the original
