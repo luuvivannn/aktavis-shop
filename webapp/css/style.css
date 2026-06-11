@@ -1,3 +1,16 @@
+@font-face {
+  font-family: 'Anime Ace';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/animeace.woff') format('woff');
+}
+@font-face {
+  font-family: 'Anime Ace';
+  font-style: normal;
+  font-weight: 700;
+  src: url('../fonts/animeace_b.woff') format('woff');
+}
+
 :root {
   --bg: var(--tg-theme-bg-color, #ffffff);
   --bg-secondary: var(--tg-theme-secondary-bg-color, #f5f5f7);
