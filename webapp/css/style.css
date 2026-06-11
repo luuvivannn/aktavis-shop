@@ -1,14 +1,8 @@
 @font-face {
-  font-family: 'Anime Ace';
+  font-family: 'VTC Letterer Pro';
   font-style: normal;
   font-weight: 400;
-  src: url('../fonts/animeace.woff') format('woff');
-}
-@font-face {
-  font-family: 'Anime Ace';
-  font-style: normal;
-  font-weight: 700;
-  src: url('../fonts/animeace_b.woff') format('woff');
+  src: url('../fonts/vtc_letterer_pro.woff') format('woff');
 }
 
 :root {
@@ -109,7 +103,7 @@ input:focus, textarea:focus, select:focus {
   object-fit: cover;
 }
 .header h1 {
-  font-family: 'Anime Ace', 'Bangers', cursive;
+  font-family: 'VTC Letterer Pro', cursive;
   font-size: 22px;
   font-weight: 400;
   margin: 0;
