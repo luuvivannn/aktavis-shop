@@ -255,8 +255,8 @@ input:focus, textarea:focus, select:focus {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.card-meta { font-size: 13px; color: var(--text); margin-top: 2px; min-height: 1.2em; }
-.card-price { font-size: 13px; font-weight: 400; margin-top: 4px; }
+.card-meta { font-size: 13px; color: var(--hint); margin-top: 2px; min-height: 1.2em; }
+.card-price { font-size: 13px; font-weight: 700; margin-top: 4px; }
 .price-original { text-decoration: line-through; opacity: 0.45; font-weight: 400; }
 
 /* ── NEW badge ─────────────────────────── */
