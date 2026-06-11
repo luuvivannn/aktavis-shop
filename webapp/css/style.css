@@ -78,11 +78,33 @@ input:focus, textarea:focus, select:focus {
 .header {
   padding: 18px 16px 8px;
 }
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #7B2FBE;
+}
+.brand-logo svg {
+  width: 22px;
+  height: 22px;
+}
 .header h1 {
-  font-size: 22px;
-  font-weight: 700;
+  font-family: 'Bebas Neue', 'Arial Narrow', sans-serif;
+  font-size: 32px;
+  font-weight: 400;
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.03em;
+  color: #7B2FBE;
 }
 .header .hint {
   margin: 4px 0 0;
