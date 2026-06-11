@@ -12,7 +12,7 @@ export function viewAbout(container) {
   container.innerHTML = `
     <header class="header">
       <h1>AKTAVIS.EU</h1>
-      <p class="hint">Оригинальные вещи · Варшава 🇵🇱</p>
+      <p class="hint">Оригинальные вещи · Самая быстрая доставка в любую точку мира</p>
     </header>
 
     <section class="info-section">
