@@ -247,6 +247,9 @@ input:focus, textarea:focus, select:focus {
   letter-spacing: 0.18em;
   color: #6B6B78;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .card-name {
   font-size: 13px;
