@@ -245,28 +245,25 @@ input:focus, textarea:focus, select:focus {
   overflow: hidden;
   min-width: 0;
 }
-.card-brand {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--hint);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-.card-name {
+/* Brand + name share one line and one colour (--text → adapts to TG light/dark
+   theme: dark text on light bg, light text on dark bg). Overflow is ellipsised. */
+.card-title {
   font-size: 13px;
-  font-weight: 400;
   color: var(--text);
-  letter-spacing: 0.01em;
-  margin-top: 3px;
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.card-title .card-brand {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.card-title .card-name {
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 .card-meta {
   font-size: 11px;

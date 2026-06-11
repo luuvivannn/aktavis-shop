@@ -44,6 +44,12 @@ export function productCardHtml(p) {
   const photo = p.main_photo || "";
   const fav = favorites.has(p.id);
   const sizeText = p.size ? `Размер ${escapeHtml(p.size)}` : "";
+  const brand = escapeHtml(p.brand);
+  const name = escapeHtml(p.name);
+  // Brand + name on a single line, one colour (see .card-title).
+  const title = brand
+    ? `<span class="card-brand">${brand}</span> <span class="card-name">${name}</span>`
+    : `<span class="card-name">${name}</span>`;
   return `
     <article class="card" data-id="${p.id}">
       <div class="card-photo-wrap">
@@ -57,8 +63,7 @@ export function productCardHtml(p) {
         </button>
       </div>
       <div class="card-body">
-        <div class="card-brand">${escapeHtml(p.brand)}</div>
-        <div class="card-name">${escapeHtml(p.name)}</div>
+        <div class="card-title">${title}</div>
         <div class="card-meta">${sizeText || "&nbsp;"}</div>
         <div class="card-price">${formatPrice(p.price_pln, p.price_usdt, p.price_eur, p.price_pln_original, p.price_eur_original)}</div>
       </div>
