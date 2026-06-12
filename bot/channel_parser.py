@@ -128,6 +128,14 @@ NOTE_RE = re.compile(
 CONDITION_RE = re.compile(r"^\s*-\s*(.+)$", re.MULTILINE)
 RARE_RE = re.compile(r"VERY\s*RARE", re.IGNORECASE)
 
+
+def _strip_md(value: str) -> str:
+    """Drop stray Markdown bold/italic markers (``*``/``**``) the seller left
+    in the caption and collapse the whitespace they leave behind. For
+    single-line fields (size, condition, note)."""
+    return re.sub(r"\s+", " ", re.sub(r"\*+", "", value)).strip()
+
+
 SKIP_DESC_PATTERNS = (
     "Связь",
     "связь",
@@ -233,6 +241,8 @@ def _build_description(text: str) -> str:
             continue
         if any(p in stripped for p in SKIP_DESC_PATTERNS):
             continue
+        # Drop Markdown bold markers (`**`) the seller left in the caption.
+        stripped = re.sub(r"[ \t]{2,}", " ", re.sub(r"\*+", "", stripped)).strip()
         cleaned_lines.append(stripped)
     description = "\n".join(cleaned_lines).strip()
     description = re.sub(r"\n{3,}", "\n\n", description)
@@ -268,13 +278,13 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
     category = _detect_category(title)
 
     size_match = SIZE_RE.search(text)
-    size = size_match.group(1).strip() if size_match else None
+    size = (_strip_md(size_match.group(1)) or None) if size_match else None
 
     price_pln, price_usdt, price_eur = _parse_price(text)
 
     condition: str | None = None
     for cond_candidate in CONDITION_RE.findall(text):
-        cleaned = cond_candidate.strip()
+        cleaned = _strip_md(cond_candidate)
         if not cleaned:
             continue
         if cleaned.startswith("#") or "Связь" in cleaned:
@@ -285,7 +295,7 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
     note_parts: list[str] = []
     note_match = NOTE_RE.search(text)
     if note_match:
-        note_parts.append(note_match.group(1).strip())
+        note_parts.append(_strip_md(note_match.group(1)))
     if RARE_RE.search(text):
         note_parts.append("VERY RARE")
     note = " · ".join(note_parts) if note_parts else None

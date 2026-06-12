@@ -52,6 +52,9 @@ async def init_db(*, seed: bool = True) -> None:
         await seed_products()
 
     await _apply_legacy_data_fixes()
+    # Strip Markdown ``**`` the sellers leave in captions from existing rows
+    # (description/condition/size/note) so the Mini App shows clean text.
+    await _strip_markdown_from_text_fields()
     # Known accidental duplicates are enforced BEFORE dedup so the dedup
     # hook sees the right survivor set — otherwise it can promote a
     # deliberately-hidden re-post to the canonical row.
@@ -149,6 +152,56 @@ def _normalize_name(name: str | None) -> str:
     cleaned = _MARKDOWN_NOISE_RE.sub("", name)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·,")
     return cleaned
+
+
+async def _strip_markdown_from_text_fields() -> None:
+    """Strip stray Markdown bold markers (``**``) that sellers leave in
+    channel captions from existing rows. Names are normalized by
+    :func:`_collapse_duplicates`; this covers description/condition/size/note,
+    which surface verbatim in the Mini App. Idempotent — only rows that still
+    contain a ``*`` are rewritten."""
+
+    def _clean(value: str | None, *, multiline: bool = False) -> str | None:
+        if not value or "*" not in value:
+            return value
+        cleaned = _MARKDOWN_NOISE_RE.sub("", value)
+        if multiline:
+            # Keep newlines; only squeeze the horizontal gaps the markers left.
+            cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+            cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+            return cleaned.strip()
+        return re.sub(r"\s+", " ", cleaned).strip()
+
+    fixed = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(
+            Product.description.like("%*%")
+            | Product.condition.like("%*%")
+            | Product.size.like("%*%")
+            | Product.note.like("%*%")
+        )
+        for product in (await session.scalars(stmt)).all():
+            new_desc = _clean(product.description, multiline=True)
+            new_cond = _clean(product.condition)
+            new_size = _clean(product.size)
+            new_note = _clean(product.note)
+            if (
+                new_desc != product.description
+                or new_cond != product.condition
+                or new_size != product.size
+                or new_note != product.note
+            ):
+                product.description = new_desc
+                product.condition = new_cond
+                product.size = new_size
+                product.note = new_note
+                fixed += 1
+
+        if fixed:
+            await session.commit()
+
+    if fixed:
+        logger.info("Markdown cleanup: stripped ** from %d products.", fixed)
 
 
 def _dedup_key(p: Product) -> tuple[str, str, str, int]:
