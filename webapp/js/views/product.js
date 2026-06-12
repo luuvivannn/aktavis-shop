@@ -55,8 +55,10 @@ function absoluteUrl(path) {
 function buildSellerLink(product) {
   const size = product.size || "—";
   const photoUrl = absoluteUrl(product.main_photo);
+  // brand may be blank (unrecognised brand) — drop it so there's no double space.
+  const label = [product.brand, product.name].filter(Boolean).join(" ");
   const lines = [
-    `Привет! Хочу купить ${product.brand} ${product.name}, размер ${size}`,
+    `Привет! Хочу купить ${label}, размер ${size}`,
   ];
   if (photoUrl) lines.push(photoUrl);
   const text = lines.join("\n");

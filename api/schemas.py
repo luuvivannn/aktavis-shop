@@ -37,6 +37,16 @@ class ProductSummary(BaseModel):
     def _normalize(cls, v: str | None) -> str | None:
         return _normalize_photo_url(v)
 
+    @field_validator("brand", mode="before")
+    @classmethod
+    def _blank_unknown_brand(cls, v: object) -> object:
+        # "Unknown" is the parser's sentinel for an unrecognised brand (kept
+        # in the DB for the bot's curation flow). Hide it from the Mini App —
+        # the real brand, if any, is already part of the name.
+        if isinstance(v, str) and v.strip().lower() == "unknown":
+            return ""
+        return v
+
 
 class ProductDetail(ProductSummary):
     """Full product view shown on the detail screen."""
