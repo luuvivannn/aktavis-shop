@@ -4,7 +4,7 @@
 //   top-left  → NEW badge (if product.is_new)
 //   top-right → heart icon (filled if product is in favorites)
 //   center    → main photo (1:1)
-//   bottom    → brand · name · size hint · price
+//   bottom    → brand · name · price
 //
 // Click anywhere on the card → product detail page.
 // Click on the heart       → toggles favorite (event doesn't bubble).
@@ -43,7 +43,6 @@ function formatPrice(pln, usdt, eur, plnOrig = null, eurOrig = null) {
 export function productCardHtml(p) {
   const photo = p.main_photo || "";
   const fav = favorites.has(p.id);
-  const sizeText = p.size ? `Размер ${escapeHtml(p.size)}` : "";
   const brand = escapeHtml(p.brand);
   const name = escapeHtml(p.name);
   // Brand + name on a single line, one colour (see .card-title).
@@ -64,7 +63,6 @@ export function productCardHtml(p) {
       </div>
       <div class="card-body">
         <div class="card-title">${title}</div>
-        <div class="card-meta">${sizeText || "&nbsp;"}</div>
         <div class="card-price">${formatPrice(p.price_pln, p.price_usdt, p.price_eur, p.price_pln_original, p.price_eur_original)}</div>
       </div>
     </article>

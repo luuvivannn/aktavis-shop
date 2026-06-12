@@ -255,14 +255,6 @@ input:focus, textarea:focus, select:focus {
   font-weight: 400;
   letter-spacing: 0.01em;
 }
-.card-meta {
-  font-size: 11px;
-  color: var(--hint);
-  font-weight: 400;
-  letter-spacing: 0.03em;
-  margin-top: 3px;
-  min-height: 1.2em;
-}
 .card-price {
   font-size: 14px;
   font-weight: 600;
@@ -357,17 +349,13 @@ input:focus, textarea:focus, select:focus {
 
 .product-body { padding: 16px; }
 
-.brand-line {
-  font-size: 11px;
+/* Brand + name on one line, one uniform size, no caps (matches card title). */
+.product-title {
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text);
-  letter-spacing: 0.01em;
-  font-weight: 400;
-}
-.product-name {
-  font-size: 24px;
-  font-weight: 700;
   margin: 4px 0 16px;
-  letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
 .row {

@@ -97,11 +97,8 @@ export async function viewProduct(container, id) {
       </div>
 
       <div class="product-body">
-        <div class="brand-line">${escapeHtml(p.brand)}</div>
-        <h1 class="product-name">${escapeHtml(p.name)}</h1>
+        <h1 class="product-title">${p.brand ? `${escapeHtml(p.brand)} ` : ""}${escapeHtml(p.name)}</h1>
 
-        ${p.size ? `<div class="row"><span class="label">Размер</span><span>${escapeHtml(p.size)}</span></div>` : ""}
-        ${p.condition ? `<div class="row"><span class="label">Состояние</span><span>${escapeHtml(p.condition)}</span></div>` : ""}
         ${p.note ? `<div class="note">⚠️ ${escapeHtml(p.note)}</div>` : ""}
 
         <div class="price-big">${formatPrice(p.price_pln, p.price_usdt, p.price_eur, p.price_pln_original, p.price_eur_original)}</div>
