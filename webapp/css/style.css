@@ -16,6 +16,7 @@
   --button-text: var(--tg-theme-button-text-color, #ffffff);
   --separator: var(--tg-theme-section-separator-color, #ebebed);
   --danger: #ff3b30;
+  --sale: #ff3b30;
   --success: #34c759;
   --new-badge: #34c759;
 }
@@ -263,6 +264,8 @@ input:focus, textarea:focus, select:focus {
   margin-top: 6px;
 }
 .price-original { text-decoration: line-through; opacity: 0.45; font-weight: 400; }
+/* Reduced (sale) price — red, so discounts grab attention. */
+.price-sale { color: var(--sale); }
 
 /* ── NEW badge ─────────────────────────── */
 .badge-new {

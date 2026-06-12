@@ -32,13 +32,13 @@ function formatPrice(pln, usdt, eur, plnOrig = null, eurOrig = null) {
   if (eur) {
     const cur = `${Number(eur).toLocaleString("pl-PL")}€`;
     if (eurOrig && eurOrig > eur)
-      return `<span class="price-original">${Number(eurOrig).toLocaleString("pl-PL")}€</span> ${cur}`;
+      return `<span class="price-original">${Number(eurOrig).toLocaleString("pl-PL")}€</span> <span class="price-sale">${cur}</span>`;
     return cur;
   }
   if (pln) {
     const cur = `${Number(pln).toLocaleString("pl-PL")} zł`;
     if (plnOrig && plnOrig > pln)
-      return `<span class="price-original">${Number(plnOrig).toLocaleString("pl-PL")} zł</span> ${cur}`;
+      return `<span class="price-original">${Number(plnOrig).toLocaleString("pl-PL")} zł</span> <span class="price-sale">${cur}</span>`;
     let s = cur;
     if (usdt) s += ` / ${usdt} USDT`;
     return s;
