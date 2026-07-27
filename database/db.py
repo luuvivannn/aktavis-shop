@@ -64,6 +64,7 @@ async def init_db(*, seed: bool = True) -> None:
     # DUPLICATED) as HIDDEN, so manual hides are distinct from machine
     # dedup and can be restored from the bot. Inert once converted.
     await _migrate_curated_hides_to_hidden()
+    await _mark_confirmed_sold()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -335,6 +336,48 @@ async def _migrate_curated_hides_to_hidden() -> None:
         logger.info(
             "Curated-hide migration: %d products moved to HIDDEN.", migrated
         )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# One-time fix: these posts got #продано on the channel but the bot's
+# edited_channel_post handler never caught it (missed event / offline at
+# the time), so the rows were stuck IN_STOCK. Confirmed sold by the admin
+# from the channel. Matched primarily by price_pln (unique per listing at
+# the time this ran) plus a loose brand/name check tolerant of "Amiri"
+# not being in KNOWN_BRANDS (falls back to brand="Unknown").
+# Idempotent — once SOLD these no longer match status == IN_STOCK.
+# ──────────────────────────────────────────────────────────────────────
+_CONFIRMED_SOLD_SEED: tuple[tuple[str, int], ...] = (
+    ("Trainer", 2550),   # Louis Vuitton Trainer Blue Denim, 590€
+    ("Trainer", 1550),   # Louis Vuitton Trainer (black), 365€
+    ("Amiri", 1050),     # Штаны Amiri, 300 USDT
+)
+
+
+async def _mark_confirmed_sold() -> None:
+    sold = 0
+
+    async with async_session_factory() as session:
+        for keyword, price_pln in _CONFIRMED_SOLD_SEED:
+            stmt = select(Product).where(
+                Product.price_pln == price_pln,
+                Product.status == ProductStatus.IN_STOCK,
+                (Product.name.ilike(f"%{keyword}%") | Product.brand.ilike(keyword)),
+            )
+            for product in (await session.scalars(stmt)).all():
+                logger.info(
+                    "Confirmed-sold fix: product id=%s (%s %s, %s zł) "
+                    "IN_STOCK → SOLD",
+                    product.id, product.brand, product.name, product.price_pln,
+                )
+                product.status = ProductStatus.SOLD
+                sold += 1
+
+        if sold:
+            await session.commit()
+
+    if sold:
+        logger.info("Confirmed-sold fix: %d products moved to SOLD.", sold)
 
 
 # ──────────────────────────────────────────────────────────────────────
