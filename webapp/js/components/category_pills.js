@@ -10,7 +10,7 @@ export const CATEGORIES = [
   { value: "shoes",        label: "Обувь" },
   { value: "tops",         label: "Кофты / Футболки" },
   { value: "jackets",      label: "Куртки" },
-  { value: "pants",        label: "Штаны" },
+  { value: "pants",        label: "Шорты/Штаны" },
   { value: "bags",         label: "Сумки" },
   { value: "accessories",  label: "Аксессуары" },
   { value: "custom_order", label: "Под заказ" },

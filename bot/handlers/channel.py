@@ -54,7 +54,7 @@ CATEGORY_LABELS: dict[ProductCategory, str] = {
     ProductCategory.SHOES: "👟 Обувь",
     ProductCategory.TOPS: "👕 Верх",
     ProductCategory.JACKETS: "🧥 Куртки",
-    ProductCategory.PANTS: "👖 Штаны",
+    ProductCategory.PANTS: "👖 Шорты/Штаны",
     ProductCategory.ACCESSORIES: "🧢 Аксессуары",
     ProductCategory.OTHER: "📦 Другое",
 }

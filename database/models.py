@@ -35,7 +35,7 @@ class ProductCategory(StrEnum):
     SHOES = "shoes"
     TOPS = "tops"            # Кофты / Футболки
     JACKETS = "jackets"      # Куртки, ветровки, пуховики, жилетки
-    PANTS = "pants"          # Штаны, брюки, джинсы
+    PANTS = "pants"          # Шорты, штаны, брюки, джинсы
     ACCESSORIES = "accessories"
     CUSTOM_ORDER = "custom_order"  # Special info-only "Под заказ" category
     OTHER = "other"

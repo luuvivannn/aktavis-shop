@@ -98,6 +98,7 @@ CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
     ),
     ProductCategory.PANTS: (
         "штан", "брюк", "джинс", "pants", "trousers", "jeans",
+        "шорт", "shorts",
     ),
     ProductCategory.TOPS: (
         "худи", "кофт", "свитшот", "лонгслив", "футболк", "майк",
