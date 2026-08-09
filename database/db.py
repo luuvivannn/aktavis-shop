@@ -55,6 +55,9 @@ async def init_db(*, seed: bool = True) -> None:
     # Strip Markdown ``**`` the sellers leave in captions from existing rows
     # (description/condition/size/note) so the Mini App shows clean text.
     await _strip_markdown_from_text_fields()
+    # Runs before dedup so both sides of a potential duplicate pair carry the
+    # same brand/name split.
+    await _redetect_unknown_brands()
     # Known accidental duplicates are enforced BEFORE dedup so the dedup
     # hook sees the right survivor set — otherwise it can promote a
     # deliberately-hidden re-post to the canonical row.
@@ -86,6 +89,11 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 # ──────────────────────────────────────────────────────────────────────
 _LEGACY_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
 _LEGACY_EUR_RE = re.compile(r"(\d[\d\s]*)\s*€")
+# Posts where the seller replaced the currency sign with an emoji
+# ("Цена : 490💸") — the amount is on the "Цена" line but no € to anchor on.
+# Mirrors ``PRICE_BARE_RE`` in bot/channel_parser.py.
+_LEGACY_BARE_PRICE_RE = re.compile(r"Цена\s*[:：\-]?\s*(\d[\d\s]*)", re.IGNORECASE)
+_LEGACY_OTHER_CURRENCY_RE = re.compile(r"z[łl]|USDT", re.IGNORECASE)
 
 
 async def _apply_legacy_data_fixes() -> None:
@@ -107,9 +115,21 @@ async def _apply_legacy_data_fixes() -> None:
             usdt_fixed += 1
 
         # 2) Same for EUR prices (channel switched to € at some point).
+        #    Rows with no zł price either are the ones where the caption used
+        #    an emoji instead of "€" — read the bare "Цена : N" as euros.
         stmt = select(Product).where(Product.price_eur.is_(None))
         for product in (await session.scalars(stmt)).all():
-            m = _LEGACY_EUR_RE.search(product.description or "")
+            description = product.description or ""
+            m = _LEGACY_EUR_RE.search(description)
+            if (
+                not m
+                and not product.price_pln
+                and not product.price_usdt
+                # Never read a zł/USDT amount as euros — only posts with no
+                # currency token at all fall through to the bare number.
+                and not _LEGACY_OTHER_CURRENCY_RE.search(description)
+            ):
+                m = _LEGACY_BARE_PRICE_RE.search(description)
             if not m:
                 continue
             try:
@@ -336,6 +356,40 @@ async def _migrate_curated_hides_to_hidden() -> None:
         logger.info(
             "Curated-hide migration: %d products moved to HIDDEN.", migrated
         )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Brands the parser didn't know when the post was ingested were stored as
+# brand="Unknown" with the whole title left in ``name`` (e.g. "Amiri MA
+# Hoodie Blue"). Re-run detection so they pick up brands added to
+# KNOWN_BRANDS later. Idempotent — a row only moves when the current brand
+# list recognises something in its name.
+# ──────────────────────────────────────────────────────────────────────
+async def _redetect_unknown_brands() -> None:
+    # Imported lazily: bot/__init__ pulls in aiogram and the handlers, which
+    # import this package back — a module-level import would be circular.
+    from bot.channel_parser import detect_brand
+
+    fixed = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(Product.brand == "Unknown")
+        for product in (await session.scalars(stmt)).all():
+            brand, name = detect_brand(product.name or "")
+            if brand == "Unknown" or not name:
+                continue
+            logger.info(
+                "Brand re-detect: product id=%s %r → brand=%r name=%r",
+                product.id, product.name, brand, name,
+            )
+            product.brand = brand
+            product.name = name
+            fixed += 1
+
+        if fixed:
+            await session.commit()
+
+    if fixed:
+        logger.info("Brand re-detect: %d products got a real brand.", fixed)
 
 
 # ──────────────────────────────────────────────────────────────────────

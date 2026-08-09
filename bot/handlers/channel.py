@@ -716,12 +716,16 @@ async def on_edited_channel_post(message: Message) -> None:
         if parsed is None:
             return
 
-        # Guard against the parser losing the identity fields on the new
-        # caption — better to skip the update than corrupt the row.
-        if not parsed.brand or parsed.brand == "Unknown" or not parsed.name:
+        # Identity (brand/name) is only refreshed when the parser actually
+        # recognised a brand — otherwise ``name`` would be overwritten with
+        # the whole title line and corrupt the row. Everything else (price,
+        # size, condition, …) is still synced: an unrecognised brand must not
+        # block the admin from fixing a price by editing the post.
+        identity_ok = bool(parsed.brand) and parsed.brand != "Unknown" and bool(parsed.name)
+        if not identity_ok and not parsed.title.strip():
             logger.info(
-                "Edit ignored — parser could not extract brand/name for "
-                "product %s (msg=%s)",
+                "Edit ignored — empty title after re-parse for product %s "
+                "(msg=%s)",
                 product.id, message.message_id,
             )
             return
@@ -743,9 +747,20 @@ async def on_edited_channel_post(message: Message) -> None:
                 setattr(product, field, new_value)
                 changes.append(f"{field}: {old_value!r} → {new_value!r}")
 
-        _apply("brand", parsed.brand, skip_none=False)
-        _apply("name", parsed.name, skip_none=False)
-        _apply("category", parsed.category, skip_none=False)
+        if identity_ok:
+            _apply("brand", parsed.brand, skip_none=False)
+            _apply("name", parsed.name, skip_none=False)
+        else:
+            logger.info(
+                "Edit: brand not recognised for product %s (msg=%s) — syncing "
+                "everything except brand/name",
+                product.id, message.message_id,
+            )
+        # OTHER means "not recognised", and the admin may have picked the
+        # category by hand at preview time — never overwrite their choice
+        # with the fallback.
+        if parsed.category != ProductCategory.OTHER:
+            _apply("category", parsed.category, skip_none=False)
         _apply("size", parsed.size)
         _apply("condition", parsed.condition)
         _apply("description", parsed.description)

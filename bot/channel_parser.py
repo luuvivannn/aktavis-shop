@@ -20,6 +20,7 @@ Parser is tolerant to small variations:
     - "*Примечание : ..." prefix
     - "🔊VERY RARE🔊" marker
     - trailing notes after the price, e.g. "590€ (в другой валюте по запросу)"
+    - a missing/emoji currency sign, e.g. "Цена : 490💸" (read as EUR)
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 # match before their substring.
 KNOWN_BRANDS: tuple[str, ...] = (
     "Stone Island x Supreme",
+    "Fear of God Essentials",
     "Maison Margiela",
     "Louis Vuitton",
     "C.P. Company",
@@ -81,7 +83,35 @@ KNOWN_BRANDS: tuple[str, ...] = (
     "Yeezy",
     "Y-3",
     "Lacoste",
+    "Emporio Armani",
     "Armani",
+    # Streetwear / contemporary labels the channel started carrying later.
+    "Chrome Hearts",
+    "Rick Owens",
+    "Alexander McQueen",
+    "Dolce & Gabbana",
+    "Acne Studios",
+    "Palm Angels",
+    "Denim Tears",
+    "Purple Brand",
+    "Fear of God",
+    "Essentials",
+    "Vetements",
+    "Represent",
+    "Trapstar",
+    "Valentino",
+    "Corteiz",
+    "Hellstar",
+    "Carhartt",
+    "Balmain",
+    "Sp5der",
+    "Salomon",
+    "Kenzo",
+    "Amiri",
+    "Diesel",
+    "Marni",
+    "Asics",
+    "Bape",
 )
 
 CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
@@ -90,11 +120,12 @@ CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
         "крос", "shoe", "обув", "сандал", "босонож", "ботин", "мокас",
     ),
     ProductCategory.BAGS: (
-        "сумк", "клатч", "рюкзак", "backpack", "tote", "пояс",
+        "сумк", "клатч", "рюкзак", "backpack", "tote", "пояс", "bag",
     ),
     ProductCategory.JACKETS: (
         "куртк", "ветровк", "пуховик", "пальто", "плащ", "жилет",
         "пиджак", "бомбер", "парк", "анорак", "шуб",
+        "jacket", "puffer", "bomber", "parka", "coat", "windbreaker",
     ),
     ProductCategory.PANTS: (
         "штан", "брюк", "джинс", "pants", "trousers", "jeans",
@@ -103,11 +134,13 @@ CATEGORY_KEYWORDS: dict[ProductCategory, tuple[str, ...]] = {
     ProductCategory.TOPS: (
         "худи", "кофт", "свитшот", "лонгслив", "футболк", "майк",
         "поло", "толстовк", "свитер", "джемпер", "пуловер", "рубашк",
+        "hoodie", "sweatshirt", "sweater", "t-shirt", "longsleeve",
+        "crewneck", "zip-up",
     ),
     ProductCategory.ACCESSORIES: (
         "часы", "кольц", "очки", "ремень", "кошел", "шапк",
         "перчатк", "watch", "scarf", "шарф", "брелок", "браслет",
-        "кепк", "панам",
+        "кепк", "панам", "beanie", "belt", "wallet", "sunglasses",
     ),
 }
 
@@ -122,6 +155,11 @@ PRICE_PLN_RE = re.compile(
 # Telegram in the post caption.
 PRICE_USDT_RE = re.compile(r"(\d[\d\s]*)\s*USDT", re.IGNORECASE)
 PRICE_EUR_RE = re.compile(r"(\d[\d\s]*)\s*€")
+# Last resort: the seller wrote an amount on the "Цена" line but the currency
+# sign is missing or replaced by an emoji ("Цена : 490💸"). Only used when no
+# €/zł/USDT amount was found anywhere in the post — the shop prices in EUR, so
+# the bare number is read as euros.
+PRICE_BARE_RE = re.compile(r"Цена\s*[:：\-]?\s*(\d[\d\s]*)", re.IGNORECASE)
 NOTE_RE = re.compile(
     r"\*?\s*Примечание\s*[:：]\s*([^\n]+(?:\n(?!Связь|Цена|#|$)[^\n]+)*)",
     re.IGNORECASE,
@@ -182,7 +220,7 @@ class ParsedProduct:
         return bool(self.brand and self.price_primary)
 
 
-def _detect_brand(title: str) -> tuple[str, str]:
+def detect_brand(title: str) -> tuple[str, str]:
     """Return ``(brand, name)`` extracted from title.
 
     Tries to match a known brand and strip it from the title; whatever
@@ -193,7 +231,10 @@ def _detect_brand(title: str) -> tuple[str, str]:
     for brand in KNOWN_BRANDS:
         idx = lower.find(brand.lower())
         if idx != -1:
-            name = (title[:idx] + title[idx + len(brand):]).strip(" -·,")
+            name = (title[:idx] + title[idx + len(brand):])
+            # The cut can leave a double space when the brand sat in the
+            # middle of the title ("Худи Amiri MA").
+            name = re.sub(r"\s+", " ", name).strip(" -·,")
             return brand, name or "Item"
     return "Unknown", title
 
@@ -228,6 +269,13 @@ def _parse_price(text: str) -> tuple[int | None, int | None, int | None]:
             eur = int(re.sub(r"\s", "", m.group(1)))
         except (ValueError, TypeError):
             eur = None
+
+    if pln is None and usdt is None and eur is None:
+        if (m := PRICE_BARE_RE.search(text)):
+            try:
+                eur = int(re.sub(r"\s", "", m.group(1)))
+            except (ValueError, TypeError):
+                eur = None
 
     return pln, usdt, eur
 
@@ -275,7 +323,7 @@ def parse_channel_post(text: str) -> ParsedProduct | None:
     # name (e.g. "**Тапочки" instead of "Тапочки").
     title = re.sub(r"\*+", "", lines[0])
     title = re.sub(r"\s+", " ", title).strip()
-    brand, name = _detect_brand(title)
+    brand, name = detect_brand(title)
     category = _detect_category(title)
 
     size_match = SIZE_RE.search(text)
