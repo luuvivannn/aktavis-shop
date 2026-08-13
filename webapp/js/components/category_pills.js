@@ -8,7 +8,7 @@ import { haptic } from "../tg.js";
 export const CATEGORIES = [
   { value: null,           label: "Все" },
   { value: "shoes",        label: "Обувь" },
-  { value: "tops",         label: "Кофты / Футболки" },
+  { value: "tops",         label: "Худи / Футболки" },
   { value: "jackets",      label: "Куртки" },
   { value: "pants",        label: "Шорты/Штаны" },
   { value: "bags",         label: "Сумки" },

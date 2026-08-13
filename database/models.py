@@ -33,7 +33,7 @@ class ProductStatus(StrEnum):
 class ProductCategory(StrEnum):
     BAGS = "bags"
     SHOES = "shoes"
-    TOPS = "tops"            # Кофты / Футболки
+    TOPS = "tops"            # Худи / Футболки
     JACKETS = "jackets"      # Куртки, ветровки, пуховики, жилетки
     PANTS = "pants"          # Шорты, штаны, брюки, джинсы
     ACCESSORIES = "accessories"
