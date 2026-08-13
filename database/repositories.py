@@ -13,6 +13,10 @@ from database.models import (
 )
 
 
+#: How many newest in-stock products carry the NEW badge, catalog-wide.
+NEW_BADGE_LIMIT = 3
+
+
 class ProductNotAvailableError(Exception):
     def __init__(self, product_id: int, status: ProductStatus) -> None:
         super().__init__(
@@ -157,25 +161,19 @@ class ProductRepository:
         return stmt.order_by(Product.created_at.desc(), Product.id.desc())
 
     async def get_new_product_ids(self) -> set[int]:
-        """Return IDs of the top-3 most recent IN_STOCK products per category.
+        """Return IDs of the 3 most recent IN_STOCK products overall.
 
-        These are shown with a NEW badge in the catalog. Uses a single
-        window-function query for efficiency.
+        These are shown with a NEW badge in the catalog. Deliberately
+        catalog-wide, not per-category: the admin wants exactly three NEW
+        badges at a time, so a newly published item pushes the oldest one
+        out regardless of category.
         """
-        rn = (
-            func.row_number()
-            .over(
-                partition_by=Product.category,
-                order_by=(Product.created_at.desc(), Product.id.desc()),
-            )
-            .label("rn")
-        )
-        inner = (
-            select(Product.id.label("id"), rn)
+        stmt = (
+            select(Product.id)
             .where(Product.status == ProductStatus.IN_STOCK)
-            .subquery()
+            .order_by(Product.created_at.desc(), Product.id.desc())
+            .limit(NEW_BADGE_LIMIT)
         )
-        stmt = select(inner.c.id).where(inner.c.rn <= 3)
         return set((await self.session.scalars(stmt)).all())
 
     async def search(self, query: str, *, limit: int = 50) -> list[Product]:
