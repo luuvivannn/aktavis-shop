@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     webapp_url: str = Field(alias="WEBAPP_URL", default="https://example.com/")
     admin_ids: list[int] = Field(alias="ADMIN_IDS", default_factory=list)
 
+    # Sales accounting: who the bot DMs for purchase/sale price after
+    # #продано, and where it syncs the resulting row (Google Sheet).
+    accounting_admin_ids: list[int] = Field(
+        alias="ACCOUNTING_ADMIN_IDS", default_factory=list
+    )
+    google_sheet_id: str = Field(alias="GOOGLE_SHEET_ID", default="")
+    google_service_account_json: str = Field(
+        alias="GOOGLE_SERVICE_ACCOUNT_JSON", default=""
+    )
+
     channel_username: str = Field(alias="CHANNEL_USERNAME", default="")
     channel_id: int | None = Field(alias="CHANNEL_ID", default=None)
 
@@ -45,7 +55,7 @@ class Settings(BaseSettings):
     # Railway sets PORT automatically — honour it if present, fall back to API_PORT.
     api_port: int = Field(alias="PORT", default=8000)
 
-    @field_validator("admin_ids", mode="before")
+    @field_validator("admin_ids", "accounting_admin_ids", mode="before")
     @classmethod
     def _split_admin_ids(cls, value: object) -> object:
         if value is None:
@@ -73,6 +83,9 @@ BOT_USERNAME: str = settings.bot_username.lstrip("@")
 MINIAPP_SHORT_NAME: str = settings.miniapp_short_name
 WEBAPP_URL: str = settings.webapp_url
 ADMIN_IDS: list[int] = settings.admin_ids
+ACCOUNTING_ADMIN_IDS: list[int] = settings.accounting_admin_ids
+GOOGLE_SHEET_ID: str = settings.google_sheet_id
+GOOGLE_SERVICE_ACCOUNT_JSON: str = settings.google_service_account_json
 CHANNEL_USERNAME: str = settings.channel_username.lstrip("@")
 CHANNEL_ID: int | None = settings.channel_id
 BACKUP_CHAT_ID: int | None = settings.backup_chat_id

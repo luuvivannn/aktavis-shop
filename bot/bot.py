@@ -12,6 +12,7 @@ from config import BOT_TOKEN
 logger = logging.getLogger(__name__)
 
 _bot: Bot | None = None
+_storage: MemoryStorage | None = None
 
 
 def get_bot() -> Bot:
@@ -23,6 +24,19 @@ def get_bot() -> Bot:
         )
         logger.info("Bot instance created.")
     return _bot
+
+
+def get_storage() -> MemoryStorage:
+    """Shared FSM storage, same instance the Dispatcher uses.
+
+    Exposed so handlers can drive another user's FSM state from outside
+    that user's own update (e.g. bot-initiated dialogs like the sales
+    accounting flow in bot/handlers/accounting.py).
+    """
+    global _storage
+    if _storage is None:
+        _storage = MemoryStorage()
+    return _storage
 
 
 async def shutdown_bot() -> None:
@@ -38,7 +52,7 @@ def create_dispatcher() -> Dispatcher:
     from bot.handlers import setup_handlers
     from bot.middlewares import DbSessionMiddleware
 
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=get_storage())
 
     db_mw = DbSessionMiddleware()
     dp.message.middleware(db_mw)

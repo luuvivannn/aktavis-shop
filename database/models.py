@@ -6,7 +6,9 @@ from enum import StrEnum
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     func,
@@ -108,3 +110,36 @@ class Product(Base):
 
     def __repr__(self) -> str:
         return f"<Product id={self.id} {self.brand} {self.name!r} {self.status}>"
+
+
+class Sale(Base):
+    """Accounting record: purchase/sale price captured from the admin after
+    a product is marked #продано. One row per product (see
+    ``SaleRepository.exists_for_product``)."""
+
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id"), index=True
+    )
+
+    purchase_amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    purchase_currency: Mapped[str] = mapped_column(String(10))
+    sale_amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    sale_currency: Mapped[str] = mapped_column(String(10))
+    # Only set when purchase_currency == sale_currency — no FX conversion.
+    profit: Mapped[float | None] = mapped_column(Numeric(10, 2), default=None)
+
+    recorded_by_admin_id: Mapped[int] = mapped_column(BigInteger)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Sale id={self.id} product_id={self.product_id} "
+            f"{self.purchase_amount} {self.purchase_currency} → "
+            f"{self.sale_amount} {self.sale_currency}>"
+        )

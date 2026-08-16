@@ -7,3 +7,4 @@ pydantic>=2.9
 pydantic-settings>=2.6
 python-dotenv>=1.0
 telethon>=1.36
+gspread>=6.0

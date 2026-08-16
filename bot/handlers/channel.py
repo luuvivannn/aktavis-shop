@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.bot import get_bot
 from bot.callbacks import ChannelPostAction, ChannelPostCategory
 from bot.channel_parser import parse_channel_post
+from bot.handlers.accounting import start_accounting_dialog
 from bot.media_aggregator import MediaGroupAggregator
 from config import ADMIN_IDS, CHANNEL_ID, CHANNEL_USERNAME, PHOTOS_DIR
 from database import (
@@ -703,6 +704,7 @@ async def on_edited_channel_post(message: Message) -> None:
                 "Product %s marked SOLD via channel edit (msg=%s)",
                 product.id, message.message_id,
             )
+            await start_accounting_dialog(product, session)
             return
 
         # Already-sold products: skip — they don't appear in the catalog.

@@ -9,6 +9,7 @@ from database.models import (
     Product,
     ProductCategory,
     ProductStatus,
+    Sale,
     SortBy,
 )
 
@@ -206,3 +207,18 @@ class ProductRepository:
         product.status = status
         await self.session.flush()
         return product
+
+
+class SaleRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def exists_for_product(self, product_id: int) -> bool:
+        stmt = select(Sale.id).where(Sale.product_id == product_id)
+        return await self.session.scalar(stmt) is not None
+
+    async def create(self, **payload) -> Sale:
+        sale = Sale(**payload)
+        self.session.add(sale)
+        await self.session.flush()
+        return sale
