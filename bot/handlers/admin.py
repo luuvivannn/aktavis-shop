@@ -26,7 +26,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.callbacks import HiddenListAction, PendingListAction
@@ -128,21 +128,39 @@ def _format_price(p: Product) -> str:
     return "?"
 
 
-async def _pending_products(session: AsyncSession) -> list[Product]:
+async def _pending_products(
+    session: AsyncSession, search: str | None = None
+) -> tuple[list[Product], int]:
+    """Newest-first (a stuck *today's* post matters more than year-old junk),
+    optionally filtered by a brand/name substring so a specific item can be
+    found without scrolling past everything ahead of the ``_MAX_LISTED`` cap.
+    """
+    conditions = [Product.status == ProductStatus.PENDING]
+    if search:
+        pattern = f"%{search}%"
+        conditions.append(or_(Product.brand.ilike(pattern), Product.name.ilike(pattern)))
+
+    total = await session.scalar(
+        select(func.count()).select_from(Product).where(*conditions)
+    )
     stmt = (
         select(Product)
-        .where(Product.status == ProductStatus.PENDING)
-        .order_by(Product.id)
+        .where(*conditions)
+        .order_by(Product.id.desc())
         .limit(_MAX_LISTED)
     )
-    return list((await session.scalars(stmt)).all())
+    products = list((await session.scalars(stmt)).all())
+    return products, total or 0
 
 
-def _render_pending(products: list[Product]) -> tuple[str, InlineKeyboardMarkup | None]:
+def _render_pending(
+    products: list[Product], total: int
+) -> tuple[str, InlineKeyboardMarkup | None]:
     if not products:
-        return "✨ Зависших черновиков нет.", None
+        return "✨ Ничего не найдено.", None
 
-    lines = [f"⏳ <b>Зависшие черновики ({len(products)})</b>", ""]
+    count_label = f"{len(products)} из {total}" if total > len(products) else str(total)
+    lines = [f"⏳ <b>Зависшие черновики ({count_label})</b>", ""]
     rows: list[list[InlineKeyboardButton]] = []
     for p in products:
         lines.append(f"#{p.id} · {p.brand} {p.name} · {_format_price(p)}")
@@ -181,8 +199,14 @@ async def cmd_pending(message: Message, session: AsyncSession) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return  # silently ignore non-admins
 
-    products = await _pending_products(session)
-    text, markup = _render_pending(products)
+    search: str | None = None
+    if message.text:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) > 1:
+            search = parts[1].strip()
+
+    products, total = await _pending_products(session, search)
+    text, markup = _render_pending(products, total)
     await message.answer(text, reply_markup=markup)
 
 
@@ -224,8 +248,8 @@ async def on_pending_action(
         await query.answer("Неизвестное действие", show_alert=True)
         return
 
-    products = await _pending_products(session)
-    text, markup = _render_pending(products)
+    products, total = await _pending_products(session)
+    text, markup = _render_pending(products, total)
     if query.message:
         try:
             await query.message.edit_text(text, reply_markup=markup)
