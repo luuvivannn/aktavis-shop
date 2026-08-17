@@ -36,3 +36,20 @@ class HiddenListAction(CallbackData, prefix="hl"):
 
     product_id: int
     action: str
+
+
+class PendingListAction(CallbackData, prefix="pnd"):
+    """Callback for the ``/pending`` list — recover a stuck draft.
+
+    A product can be stuck in PENDING with no preview ever sent if the bot
+    restarted while the preview's debounce timer was still armed (the timer
+    lives only in memory — see ``bot/handlers/channel.py``). ``/pending``
+    surfaces those rows directly from the DB.
+
+    Actions:
+      ``publish`` — move PENDING → IN_STOCK
+      ``skip``    — delete the stuck draft + its downloaded photos
+    """
+
+    product_id: int
+    action: str
