@@ -32,7 +32,19 @@ logger = logging.getLogger(__name__)
 
 router = Router(name=__name__)
 
-_AMOUNT_RE = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*([A-Za-z]+)\s*$")
+_AMOUNT_RE = re.compile(
+    r"^\s*(?P<pre>[^\s\d]{1,10})?\s*(?P<num>\d+(?:[.,]\d+)?)\s*(?P<post>[^\s\d]{1,10})?\s*$"
+)
+
+# Currency symbols / spellings admins actually type -> ISO code.
+_CURRENCY_ALIASES = {
+    "€": "EUR", "EUR": "EUR", "ЕВРО": "EUR", "ЕУРО": "EUR", "Е": "EUR",
+    "$": "USD", "USD": "USD", "ДОЛЛ": "USD", "ДОЛЛАРОВ": "USD",
+    "ZŁ": "PLN", "ZL": "PLN", "PLN": "PLN", "ЗЛ": "PLN", "ЗЛОТЫХ": "PLN",
+    "₽": "RUB", "РУБ": "RUB", "RUB": "RUB", "Р": "RUB",
+    "£": "GBP", "GBP": "GBP",
+    "₴": "UAH", "UAH": "UAH", "ГРН": "UAH",
+}
 
 
 class AccountingStates(StatesGroup):
@@ -40,15 +52,27 @@ class AccountingStates(StatesGroup):
     awaiting_sale = State()
 
 
+def _resolve_currency(token: str | None) -> str | None:
+    if not token:
+        return None
+    token = token.strip().upper().rstrip(".")
+    return _CURRENCY_ALIASES.get(token, token if token.isalpha() and len(token) == 3 else None)
+
+
 def _parse_amount(text: str) -> tuple[Decimal, str] | None:
     match = _AMOUNT_RE.match(text or "")
     if not match:
         return None
+    currency = _resolve_currency(match.group("post")) or _resolve_currency(
+        match.group("pre")
+    )
+    if currency is None:
+        return None
     try:
-        amount = Decimal(match.group(1).replace(",", "."))
+        amount = Decimal(match.group("num").replace(",", "."))
     except InvalidOperation:
         return None
-    return amount, match.group(2).upper()
+    return amount, currency
 
 
 async def start_accounting_dialog(product: Product, session: AsyncSession) -> None:
