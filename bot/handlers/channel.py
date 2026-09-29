@@ -26,6 +26,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InputMediaPhoto,
     Message,
+    PhotoSize,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +43,7 @@ from database import (
     ProductStatus,
     async_session_factory,
 )
+from database.storage import MAX_PHOTO_SIDE
 
 logger = logging.getLogger(__name__)
 
@@ -259,8 +261,15 @@ def _hidden_text(product: Product) -> str:
     return f"🙈 <b>Скрыт</b>\n#{product.id} {product.brand} {product.name}"
 
 
+def _fit_photo(sizes: list[PhotoSize]) -> PhotoSize:
+    """Biggest variant that fits MAX_PHOTO_SIDE — Telegram's 2560px original
+    is ~2x the bytes on the volume for no visible gain on a phone."""
+    fitting = [s for s in sizes if max(s.width, s.height) <= MAX_PHOTO_SIDE]
+    return max(fitting or sizes, key=lambda s: s.width * s.height)
+
+
 async def _download_photos(messages: list[Message]) -> list[str]:
-    """Download largest photo from each message; return list of relative paths."""
+    """Download each message's photo (capped at MAX_PHOTO_SIDE); return relative paths."""
     bot = get_bot()
 
     paths: list[str] = []
@@ -268,17 +277,17 @@ async def _download_photos(messages: list[Message]) -> list[str]:
     for idx, msg in enumerate(messages):
         if not msg.photo:
             continue
-        largest = msg.photo[-1]
+        photo = _fit_photo(msg.photo)
         filename = f"channel_{first_id}_{idx}.jpg"
         relative = f"photos/{filename}"
         full_path = PHOTOS_DIR / filename
         try:
-            await bot.download(largest, destination=full_path)
+            await bot.download(photo, destination=full_path)
             paths.append(relative)
         except TelegramAPIError:
             logger.exception(
                 "Failed to download photo %s for channel post %s",
-                largest.file_id, first_id,
+                photo.file_id, first_id,
             )
     return paths
 
@@ -489,12 +498,12 @@ def _resolve_post_id(message: Message) -> int | None:
 
 async def _download_comment_photo(post_id: int, message: Message) -> str | None:
     bot = get_bot()
-    largest = message.photo[-1]
+    photo = _fit_photo(message.photo)
     filename = f"channel_{post_id}_c{message.message_id}.jpg"
     relative = f"photos/{filename}"
     full_path = PHOTOS_DIR / filename
     try:
-        await bot.download(largest, destination=full_path)
+        await bot.download(photo, destination=full_path)
         return relative
     except TelegramAPIError:
         logger.exception(

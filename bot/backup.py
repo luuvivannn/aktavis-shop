@@ -33,7 +33,7 @@ router = Router(name=__name__)
 _STARTUP_DELAY_SECONDS = 30
 
 
-def _backup_chat_id() -> int | None:
+def backup_chat_id() -> int | None:
     if BACKUP_CHAT_ID is not None:
         return BACKUP_CHAT_ID
     if ADMIN_IDS:
@@ -96,7 +96,7 @@ async def backup_loop(bot: Bot) -> None:
     hiccup can't take down the bot or the shop API (they share one
     process and are torn down together on the first unhandled error).
     """
-    chat_id = _backup_chat_id()
+    chat_id = backup_chat_id()
     if chat_id is None:
         logger.warning(
             "Auto-backup disabled: no BACKUP_CHAT_ID and no ADMIN_IDS set."

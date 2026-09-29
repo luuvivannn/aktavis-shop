@@ -10,6 +10,7 @@ from api.app import app as fastapi_app
 from bot import create_dispatcher, get_bot, shutdown_bot
 from bot.backup import backup_loop
 from bot.commands import set_default_commands, set_menu_button
+from bot.storage import storage_loop
 from config import API_HOST, API_PORT
 from database import dispose_engine, init_db
 
@@ -49,6 +50,11 @@ async def run_backup() -> None:
     await backup_loop(get_bot())
 
 
+async def run_storage() -> None:
+    # Same contract as run_backup(): the loop never raises.
+    await storage_loop(get_bot())
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -62,6 +68,7 @@ async def main() -> None:
         asyncio.create_task(run_api(), name="api"),
         asyncio.create_task(run_bot(), name="bot"),
         asyncio.create_task(run_backup(), name="backup"),
+        asyncio.create_task(run_storage(), name="storage"),
     }
 
     try:

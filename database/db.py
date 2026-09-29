@@ -48,8 +48,10 @@ async def init_db(*, seed: bool = True) -> None:
     await _run_migrations()
 
     if seed:
-        _copy_bundled_photos()
         await seed_products()
+        # After seeding: only photos some product still points at are copied,
+        # so files the storage cleanup removed don't come back on redeploy.
+        await _copy_bundled_photos()
 
     await _apply_legacy_data_fixes()
     # Strip Markdown ``**`` the sellers leave in captions from existing rows
@@ -476,24 +478,37 @@ async def _enforce_known_accidental_dups() -> None:
         )
 
 
-def _copy_bundled_photos() -> None:
-    """Copy photos bundled with the code into PHOTOS_DIR if they aren't there.
+def bundled_photos_dir() -> Path:
+    """The ``photos/`` folder shipped in the repository."""
+    return Path(__file__).resolve().parent.parent / "photos"
+
+
+async def referenced_photo_names() -> set[str]:
+    """File names (no directory) of every photo any product points at."""
+    async with async_session_factory() as session:
+        rows = await session.scalars(select(Product.photos))
+        return {Path(p).name for photos in rows if photos for p in photos if p}
+
+
+async def _copy_bundled_photos() -> None:
+    """Copy bundled photos that products reference into PHOTOS_DIR.
 
     Useful for first-time deploys on Railway: the volume at /data is empty,
     but the repository ships with photos that the seeded products reference.
-    Runs locally too as a no-op when bundled_dir == PHOTOS_DIR.
+    Unreferenced files (the raw channel export) are never copied — they only
+    ate volume space. Runs locally too as a no-op when bundled_dir == PHOTOS_DIR.
     """
-    project_root = Path(__file__).resolve().parent.parent
-    bundled_dir = project_root / "photos"
+    bundled_dir = bundled_photos_dir()
 
     if not bundled_dir.exists():
         return
     if bundled_dir.resolve() == PHOTOS_DIR.resolve():
         return
 
+    referenced = await referenced_photo_names()
     copied = 0
     for src in bundled_dir.iterdir():
-        if src.suffix.lower() not in _IMAGE_EXTS:
+        if src.suffix.lower() not in _IMAGE_EXTS or src.name not in referenced:
             continue
         dest = PHOTOS_DIR / src.name
         if dest.exists():
