@@ -6,6 +6,8 @@ import re
 import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import select, text
@@ -16,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import DATABASE_URL, PHOTOS_DIR
-from database.models import Base, Product, ProductCategory, ProductStatus
+from database.models import Base, Product, ProductCategory, ProductStatus, Sale
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,7 @@ async def init_db(*, seed: bool = True) -> None:
     # dedup and can be restored from the bot. Inert once converted.
     await _migrate_curated_hides_to_hidden()
     await _mark_confirmed_sold()
+    await _fix_sales_ledger()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -434,6 +437,91 @@ async def _mark_confirmed_sold() -> None:
 
     if sold:
         logger.info("Confirmed-sold fix: %d products moved to SOLD.", sold)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Sales-ledger corrections the admin confirmed on 2026-09-30, after the
+# per-month sheet tabs (rebuilt from the DB) were compared with the old
+# flat sheet. Idempotent: the deletes match nothing once done, and the
+# insert looks for its own row first.
+#   * Two August entries were tests of the #продано dialog.
+#   * A second LV Skate (29.09, 110 → 190 EUR), sold off the same post as
+#     the 12.09 one, was typed into the old sheet by hand — the bot records
+#     one sale per product — so it never reached the DB.
+# ──────────────────────────────────────────────────────────────────────
+# (brand, name, purchase EUR, sale EUR), all recorded before 2026-09-01.
+_TEST_SALES: tuple[tuple[str, str, int, int], ...] = (
+    ("Celine", "Logo Sweatpants", 240, 240),
+    ("Chrome Hearts", "Scroll Logo Pants", 250, 480),
+)
+
+
+async def _fix_sales_ledger() -> None:
+    removed = 0
+    added = 0
+
+    async with async_session_factory() as session:
+        for brand, name, purchase, sale_price in _TEST_SALES:
+            stmt = (
+                select(Sale)
+                .join(Product, Product.id == Sale.product_id)
+                .where(
+                    Product.brand.ilike(brand),
+                    Product.name.ilike(f"%{name}%"),
+                    Sale.purchase_amount == purchase,
+                    Sale.sale_amount == sale_price,
+                    Sale.created_at < datetime(2026, 9, 1),
+                )
+            )
+            for sale in (await session.scalars(stmt)).all():
+                logger.info("Sales fix: deleting test sale %r", sale)
+                await session.delete(sale)
+                removed += 1
+
+        # The 12.09 sale points at the Skate post the second pair came from.
+        first_skate = await session.scalar(
+            select(Sale)
+            .join(Product, Product.id == Sale.product_id)
+            .where(
+                Product.brand.ilike("Louis Vuitton"),
+                Product.name.ilike("Skate%"),
+                Sale.purchase_amount == 140,
+                Sale.sale_amount == 285,
+            )
+            .limit(1)
+        )
+        if first_skate is not None:
+            second_skate = await session.scalar(
+                select(Sale.id).where(
+                    Sale.product_id == first_skate.product_id,
+                    Sale.purchase_amount == 110,
+                    Sale.sale_amount == 190,
+                )
+            )
+            if second_skate is None:
+                session.add(
+                    Sale(
+                        product_id=first_skate.product_id,
+                        purchase_amount=Decimal("110"),
+                        purchase_currency="EUR",
+                        sale_amount=Decimal("190"),
+                        sale_currency="EUR",
+                        profit=Decimal("80"),
+                        recorded_by_admin_id=0,
+                        # UTC; 23:00 in Kyiv, after that day's other sale.
+                        created_at=datetime(2026, 9, 29, 20, 0),
+                    )
+                )
+                added += 1
+
+        if removed or added:
+            await session.commit()
+
+    if removed or added:
+        logger.info(
+            "Sales ledger fix: %d test sales deleted, %d manual sales added.",
+            removed, added,
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────
