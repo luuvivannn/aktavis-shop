@@ -222,3 +222,12 @@ class SaleRepository:
         self.session.add(sale)
         await self.session.flush()
         return sale
+
+    async def list_with_products(self) -> list[tuple[Sale, Product | None]]:
+        """All sales, oldest first; product is None if it was deleted since."""
+        stmt = (
+            select(Sale, Product)
+            .outerjoin(Product, Product.id == Sale.product_id)
+            .order_by(Sale.created_at, Sale.id)
+        )
+        return [(sale, product) for sale, product in await self.session.execute(stmt)]

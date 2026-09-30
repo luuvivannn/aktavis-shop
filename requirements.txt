@@ -9,3 +9,4 @@ python-dotenv>=1.0
 telethon>=1.36
 gspread>=6.0
 Pillow>=10.4
+tzdata>=2024.1

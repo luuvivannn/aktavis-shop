@@ -1,6 +1,6 @@
 """Sales accounting (beta): captures purchase/sale price from the admin
 right after a channel post is marked #продано, and logs it to the `sales`
-table + a Google Sheet (see bot/sheets.py).
+table + a per-month Google Sheet tab (see bot/sheets.py).
 
 The dialog is bot-initiated (triggered from bot/handlers/channel.py, not
 by an incoming admin message), so it drives FSM state directly via a
@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from aiogram import F, Router
@@ -24,9 +25,9 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.bot import get_bot, get_storage
-from bot.sheets import append_sale_row
+from bot.sheets import SALES_TZ, SaleRow, sync_month
 from config import ACCOUNTING_ADMIN_IDS
-from database import Product, SaleRepository
+from database import Product, SaleRepository, async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -173,26 +174,54 @@ async def on_sale_amount(
     )
     await session.commit()
 
-    admin_username = (
-        f"@{admin_user.username}" if admin_user and admin_user.username else str(
-            admin_user.id if admin_user else "?"
-        )
-    )
+    now = datetime.now(SALES_TZ)
     try:
-        await asyncio.to_thread(
-            append_sale_row,
-            brand=product.brand,
-            name=product.name,
-            purchase_amount=purchase_amount,
-            purchase_currency=purchase_currency,
-            sale_amount=sale_amount,
-            sale_currency=sale_currency,
-            profit=profit,
-            admin_username=admin_username,
-        )
+        await sync_sales_sheet(session, now.year, now.month)
     except Exception:
         logger.exception("Failed to sync sale (product_id=%s) to Google Sheets", product_id)
         await message.answer("Записано в базу ✅, но в таблицу не ушло — гляну позже.")
         return
 
     await message.answer("Записано ✅")
+
+
+def _local(dt: datetime) -> datetime:
+    # SQLite hands created_at back naive, in UTC.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(SALES_TZ)
+
+
+async def sync_sales_sheet(session: AsyncSession, year: int, month: int) -> None:
+    """Redraw the month's tab in the Google Sheet from the DB."""
+    sales: list[SaleRow] = []
+    for sale, product in await SaleRepository(session).list_with_products():
+        sold_at = _local(sale.created_at)
+        if (sold_at.year, sold_at.month) != (year, month):
+            continue
+        sales.append(
+            SaleRow(
+                sold_at=sold_at,
+                brand=product.brand if product else "—",
+                name=product.name if product else "(товар удалён)",
+                purchase_amount=Decimal(sale.purchase_amount),
+                purchase_currency=sale.purchase_currency,
+                sale_amount=Decimal(sale.sale_amount),
+                sale_currency=sale.sale_currency,
+            )
+        )
+    await asyncio.to_thread(sync_month, year, month, sales)
+
+
+async def sync_sheets_on_boot() -> None:
+    """Redraw this month's and last month's tabs, so a deploy applies layout
+    changes and a month that ended before the deploy still gets its tab.
+    Never raises."""
+    now = datetime.now(SALES_TZ)
+    last = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
+    for year, month in (last, (now.year, now.month)):
+        try:
+            async with async_session_factory() as session:
+                await sync_sales_sheet(session, year, month)
+        except Exception:
+            logger.exception("Failed to sync sales sheet %d-%02d on boot", year, month)
