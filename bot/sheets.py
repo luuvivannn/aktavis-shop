@@ -76,6 +76,10 @@ _NCOLS = len(_COLUMNS)
 _HEADER_ROW = 7
 _FIRST_DATA_ROW = 8
 
+# Languages whose locales use '.' as the decimal mark, so formula arguments
+# are split by ','. Everywhere else (ru, uk, pl, de…) Sheets expects ';'.
+_DOT_DECIMAL_LANGS = {"en", "ja", "zh", "ko", "th", "he", "iw", "hi"}
+
 _EUR_FMT = "#,##0.00"
 _PROFIT_FMT = "#,##0.00;[Red]-#,##0.00"
 
@@ -295,12 +299,26 @@ def _cards(first: int, last: int, total: int):
     )
 
 
+def _localize_formulas(grid: list[dict], locale: str) -> None:
+    """Sheets parses API formulas in the spreadsheet's locale, so a ru_RU
+    sheet rejects ``IF(a,b,c)`` and needs ``IF(a;b;c)``. Our formulas are
+    written with ',' and have no commas inside string literals."""
+    if locale.split("_")[0] in _DOT_DECIMAL_LANGS:
+        return
+    for row in grid:
+        for cell in row["values"]:
+            value = cell.get("userEnteredValue", {})
+            if "formulaValue" in value:
+                value["formulaValue"] = value["formulaValue"].replace(",", ";")
+
+
 def build_month_requests(
-    sheet_id: int, year: int, month: int, sales: list[SaleRow]
+    sheet_id: int, year: int, month: int, sales: list[SaleRow], locale: str = "en_US"
 ) -> list[dict]:
     """batchUpdate requests that (re)draw the whole month tab."""
     primary = _MONTH_COLORS[month]
     grid = _build_grid(month_title(year, month), primary, sales)
+    _localize_formulas(grid, locale)
     total = len(grid)  # ИТОГО is the last row
 
     def span(r0: int, r1: int, c0: int, c1: int) -> dict:
@@ -390,7 +408,8 @@ def sync_month(year: int, month: int, sales: list[SaleRow]) -> None:
             title, rows=len(sales) + _HEADER_ROW + 1, cols=_NCOLS, index=0
         )
 
-    spreadsheet.batch_update(
-        {"requests": build_month_requests(worksheet.id, year, month, sales)}
+    requests = build_month_requests(
+        worksheet.id, year, month, sales, spreadsheet.locale or "en_US"
     )
+    spreadsheet.batch_update({"requests": requests})
     logger.info("Sales sheet '%s' synced (%d sales)", title, len(sales))
