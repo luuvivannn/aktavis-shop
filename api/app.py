@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routers import products
+from api.routers import products, subscribers
 from config import PHOTOS_DIR
 from database import dispose_engine, init_db
 
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
         logger.warning("Photos directory not found: %s", PHOTOS_DIR)
 
     app.include_router(products.router, prefix="/api")
+    app.include_router(subscribers.router, prefix="/api")
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:

@@ -48,7 +48,7 @@ async def shutdown_bot() -> None:
 
 
 def create_dispatcher() -> Dispatcher:
-    from bot import backup, storage
+    from bot import backup, promo, storage
     from bot.handlers import setup_handlers
     from bot.middlewares import DbSessionMiddleware
 
@@ -61,4 +61,5 @@ def create_dispatcher() -> Dispatcher:
     setup_handlers(dp)
     dp.include_router(backup.router)
     dp.include_router(storage.router)
+    dp.include_router(promo.router)
     return dp

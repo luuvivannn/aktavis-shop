@@ -13,6 +13,7 @@
 //   in ``initDataUnsafe.start_param``. We parse it and translate
 //   ``p_42`` into a product-detail route on boot.
 
+import { api } from "./api.js";
 import { initTabBar, setActiveTab } from "./components/tab_bar.js";
 import { initTelegram, tg } from "./tg.js";
 import { viewAbout } from "./views/about.js";
@@ -25,10 +26,12 @@ initTelegram();
 initTabBar();
 
 const app = document.getElementById("app");
+const WRITE_ACCESS_ASKED_KEY = "aktavis_write_access_asked";
 
 // Apply start_param BEFORE the first route() call so a deep link goes
 // straight to the right screen with no flash of the default catalog.
 applyStartParam();
+setupPromoAudience();
 
 async function route() {
   const hash = location.hash || "#/catalog";
@@ -75,6 +78,31 @@ function applyStartParam() {
   if (param === "custom_order" || param === "custom-order") {
     location.hash = "#/custom-order";
   }
+}
+
+// The bot's daily promo only reaches users who let it message them.
+// Those who already did are (re-)registered on every open; everyone else
+// gets Telegram's native "allow messages?" prompt once per device. If they
+// agree, Telegram tells the bot directly (write_access_allowed), so there
+// is nothing to send from here.
+function setupPromoAudience() {
+  const user = tg?.initDataUnsafe?.user;
+  if (!user) return;
+
+  if (user.allows_write_to_pm) {
+    api.subscribe().catch(() => {});
+    return;
+  }
+
+  if (!tg.requestWriteAccess || !tg.isVersionAtLeast?.("6.9")) return;
+  try {
+    if (localStorage.getItem(WRITE_ACCESS_ASKED_KEY)) return;
+    localStorage.setItem(WRITE_ACCESS_ASKED_KEY, "1");
+  } catch {
+    return; // can't remember that we asked — better not to nag every open
+  }
+  // Let the catalog paint first so the prompt doesn't land on a blank screen.
+  setTimeout(() => tg.requestWriteAccess(), 1500);
 }
 
 window.addEventListener("hashchange", route);

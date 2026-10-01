@@ -22,6 +22,8 @@ class TelegramUser:
     username: str | None = None
     language_code: str | None = None
     is_premium: bool = False
+    # Signed by Telegram: the user allowed the bot to DM them.
+    allows_write_to_pm: bool = False
 
     @property
     def full_name(self) -> str | None:
@@ -87,4 +89,5 @@ def verify_init_data(
         username=user_dict.get("username"),
         language_code=user_dict.get("language_code"),
         is_premium=bool(user_dict.get("is_premium", False)),
+        allows_write_to_pm=bool(user_dict.get("allows_write_to_pm", False)),
     )

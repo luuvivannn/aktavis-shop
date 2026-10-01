@@ -1,3 +1,3 @@
-from api.routers import products
+from api.routers import products, subscribers
 
-__all__ = ["products"]
+__all__ = ["products", "subscribers"]

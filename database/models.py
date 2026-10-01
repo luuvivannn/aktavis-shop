@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -142,4 +143,61 @@ class Sale(Base):
             f"<Sale id={self.id} product_id={self.product_id} "
             f"{self.purchase_amount} {self.purchase_currency} → "
             f"{self.sale_amount} {self.sale_currency}>"
+        )
+
+
+class Subscriber(Base):
+    """A user the bot may DM — the audience of the daily promo broadcast.
+
+    Telegram only lets a bot message users who started it or explicitly
+    allowed it (Mini App write-access prompt), so rows are only ever
+    created from those signals. ``blocked_at`` is set when a send fails
+    because the user blocked the bot, and cleared when they come back."""
+
+    __tablename__ = "subscribers"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=False
+    )
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    username: Mapped[str | None] = mapped_column(String(64))
+    # How we got permission first: "start" / "webapp" / "write_access".
+    source: Mapped[str] = mapped_column(String(20))
+    blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<Subscriber {self.user_id} @{self.username} {self.source}>"
+
+
+class PromoBroadcast(Base):
+    """One row per day the promo went out. The unique date is what keeps a
+    redeploy around the scheduled hour from sending the post twice."""
+
+    __tablename__ = "promo_broadcasts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    promo_date: Mapped[date] = mapped_column(Date, unique=True)
+
+    recipients: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PromoBroadcast {self.promo_date} "
+            f"{self.sent}/{self.recipients} sent>"
         )

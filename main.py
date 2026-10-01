@@ -11,6 +11,7 @@ from bot import create_dispatcher, get_bot, shutdown_bot
 from bot.backup import backup_loop
 from bot.commands import set_default_commands, set_menu_button
 from bot.handlers.accounting import sync_sheets_on_boot
+from bot.promo import promo_loop
 from bot.storage import storage_loop
 from config import API_HOST, API_PORT
 from database import dispose_engine, init_db
@@ -56,6 +57,11 @@ async def run_storage() -> None:
     await storage_loop(get_bot())
 
 
+async def run_promo() -> None:
+    # Same contract as run_backup(): the loop never raises.
+    await promo_loop(get_bot())
+
+
 async def run_sheets() -> None:
     # One-shot, never raises; finishing early doesn't trip FIRST_EXCEPTION.
     await sync_sheets_on_boot()
@@ -75,6 +81,7 @@ async def main() -> None:
         asyncio.create_task(run_bot(), name="bot"),
         asyncio.create_task(run_backup(), name="backup"),
         asyncio.create_task(run_storage(), name="storage"),
+        asyncio.create_task(run_promo(), name="promo"),
         asyncio.create_task(run_sheets(), name="sheets"),
     }
 

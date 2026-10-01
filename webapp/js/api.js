@@ -71,6 +71,15 @@ export const api = {
     return request(`/api/products${q ? "?" + q : ""}`);
   },
 
+  /**
+   * Add this user to the bot's daily promo audience. The server only
+   * accepts it when Telegram's signed initData says the user allows the
+   * bot to message them.
+   */
+  subscribe() {
+    return request("/api/subscribe", { method: "POST" });
+  },
+
   getProduct(id) {
     return request(`/api/products/${id}`);
   },

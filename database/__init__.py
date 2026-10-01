@@ -10,14 +10,17 @@ from database.models import (
     Product,
     ProductCategory,
     ProductStatus,
+    PromoBroadcast,
     Sale,
     SortBy,
+    Subscriber,
 )
 from database.repositories import (
     ProductNotAvailableError,
     ProductNotFoundError,
     ProductRepository,
     SaleRepository,
+    SubscriberRepository,
 )
 
 __all__ = [
@@ -28,9 +31,12 @@ __all__ = [
     "ProductNotFoundError",
     "ProductRepository",
     "ProductStatus",
+    "PromoBroadcast",
     "Sale",
     "SaleRepository",
     "SortBy",
+    "Subscriber",
+    "SubscriberRepository",
     "async_session_factory",
     "dispose_engine",
     "engine",

@@ -42,6 +42,11 @@ class Settings(BaseSettings):
         alias="BACKUP_INTERVAL_HOURS", default=24
     )
 
+    # Daily promo broadcast to everyone who allowed the bot to DM them.
+    # Hour is Warsaw local time; PROMO_ENABLED=false switches it off.
+    promo_enabled: bool = Field(alias="PROMO_ENABLED", default=True)
+    promo_hour: int = Field(alias="PROMO_HOUR", default=15)
+
     telegram_api_id: int | None = Field(alias="TELEGRAM_API_ID", default=None)
     telegram_api_hash: str = Field(alias="TELEGRAM_API_HASH", default="")
 
@@ -90,6 +95,8 @@ CHANNEL_USERNAME: str = settings.channel_username.lstrip("@")
 CHANNEL_ID: int | None = settings.channel_id
 BACKUP_CHAT_ID: int | None = settings.backup_chat_id
 BACKUP_INTERVAL_HOURS: int = settings.backup_interval_hours
+PROMO_ENABLED: bool = settings.promo_enabled
+PROMO_HOUR: int = settings.promo_hour
 TELEGRAM_API_ID: int | None = settings.telegram_api_id
 TELEGRAM_API_HASH: str = settings.telegram_api_hash
 

@@ -34,6 +34,7 @@ ADMIN_COMMANDS: list[BotCommand] = [
     *USER_COMMANDS,
     BotCommand(command="hidden", description="🙈 Скрытые товары"),
     BotCommand(command="pending", description="⏳ Зависшие черновики"),
+    BotCommand(command="promo", description="📣 Рассылка: превью и статистика"),
 ]
 
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
@@ -11,6 +12,7 @@ from database.models import (
     ProductStatus,
     Sale,
     SortBy,
+    Subscriber,
 )
 
 
@@ -231,3 +233,61 @@ class SaleRepository:
             .order_by(Sale.created_at, Sale.id)
         )
         return [(sale, product) for sale, product in await self.session.execute(stmt)]
+
+
+class SubscriberRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def upsert(
+        self,
+        user_id: int,
+        *,
+        first_name: str | None,
+        username: str | None,
+        source: str,
+    ) -> None:
+        """Record a user the bot may DM. Re-subscribing clears a block;
+        the first ``source`` is kept so we know how the user came in."""
+        stmt = sqlite_insert(Subscriber).values(
+            user_id=user_id,
+            first_name=first_name,
+            username=username,
+            source=source,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Subscriber.user_id],
+            set_={
+                "first_name": stmt.excluded.first_name,
+                "username": stmt.excluded.username,
+                "blocked_at": None,
+            },
+        )
+        await self.session.execute(stmt)
+
+    async def active_ids(self) -> list[int]:
+        stmt = (
+            select(Subscriber.user_id)
+            .where(Subscriber.blocked_at.is_(None))
+            .order_by(Subscriber.created_at)
+        )
+        return list((await self.session.scalars(stmt)).all())
+
+    async def mark_blocked(self, user_ids: Iterable[int]) -> None:
+        ids = list(user_ids)
+        if not ids:
+            return
+        await self.session.execute(
+            update(Subscriber)
+            .where(Subscriber.user_id.in_(ids))
+            .values(blocked_at=func.now())
+        )
+
+    async def counts(self) -> tuple[int, int]:
+        """(active, blocked) subscriber counts."""
+        stmt = select(
+            func.count().filter(Subscriber.blocked_at.is_(None)),
+            func.count().filter(Subscriber.blocked_at.is_not(None)),
+        )
+        active, blocked = (await self.session.execute(stmt)).one()
+        return int(active or 0), int(blocked or 0)
