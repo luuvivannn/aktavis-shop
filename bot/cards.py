@@ -140,11 +140,10 @@ def _public_photo_url(path: str | None) -> str | None:
 
 def order_url(p: Product) -> str:
     """Opens a chat with the seller with the order already typed — the
-    same message as the Mini App's button, plus where the buyer came from.
-    Telegram previews the photo link, so the seller sees the item."""
+    same message as the Mini App's button. Telegram previews the photo
+    link, so the seller sees the item."""
     lines = [
-        f"Привет! Хочу купить {product_label(p)}, "
-        f"размер {p.size or '—'} (из рассылки)"
+        f"Привет! Хочу купить {product_label(p)}, размер {p.size or '—'}"
     ]
     photo_url = _public_photo_url(p.main_photo)
     if photo_url:
