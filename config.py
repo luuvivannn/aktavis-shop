@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     promo_enabled: bool = Field(alias="PROMO_ENABLED", default=True)
     promo_hour: int = Field(alias="PROMO_HOUR", default=15)
 
+    # Hourly product cards to the same audience: one in-stock product an
+    # hour from CARDS_START_HOUR until that weekday's products run out
+    # (never at or after CARDS_END_HOUR). Warsaw time. CARDS_SILENT sends
+    # them without sound.
+    cards_enabled: bool = Field(alias="CARDS_ENABLED", default=True)
+    cards_start_hour: int = Field(alias="CARDS_START_HOUR", default=10)
+    cards_end_hour: int = Field(alias="CARDS_END_HOUR", default=22)
+    cards_silent: bool = Field(alias="CARDS_SILENT", default=True)
+
     telegram_api_id: int | None = Field(alias="TELEGRAM_API_ID", default=None)
     telegram_api_hash: str = Field(alias="TELEGRAM_API_HASH", default="")
 
@@ -97,6 +106,10 @@ BACKUP_CHAT_ID: int | None = settings.backup_chat_id
 BACKUP_INTERVAL_HOURS: int = settings.backup_interval_hours
 PROMO_ENABLED: bool = settings.promo_enabled
 PROMO_HOUR: int = settings.promo_hour
+CARDS_ENABLED: bool = settings.cards_enabled
+CARDS_START_HOUR: int = settings.cards_start_hour
+CARDS_END_HOUR: int = settings.cards_end_hour
+CARDS_SILENT: bool = settings.cards_silent
 TELEGRAM_API_ID: int | None = settings.telegram_api_id
 TELEGRAM_API_HASH: str = settings.telegram_api_hash
 

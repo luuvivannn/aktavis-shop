@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -44,7 +45,8 @@ router = Router(name=__name__)
 PROMO_TZ = ZoneInfo("Europe/Warsaw")
 PROMO_PHOTO = Path(__file__).resolve().parent / "assets" / "promo.jpg"
 
-_ADMIN_DM = "https://t.me/aktavis_eu"
+# The seller account buyers write to.
+SELLER_URL = "https://t.me/aktavis_eu"
 
 PROMO_CAPTION = (
     "💸 <b>Выкупаю ваши вещи в день обращения</b>\n\n"
@@ -57,12 +59,15 @@ PROMO_CAPTION = (
 )
 
 PROMO_BUTTONS: list[tuple[str, str]] = [
-    ("Заказать", _ADMIN_DM),
-    ("Проверить вещь на оригинальность", _ADMIN_DM),
+    ("Заказать", SELLER_URL),
+    ("Проверить вещь на оригинальность", SELLER_URL),
     ("Отзывы", "https://t.me/actavis_feedback"),
     ("TikTok", "https://www.tiktok.com/@aktaviss"),
     ("Instagram", "https://www.instagram.com/aktavis.eu"),
 ]
+
+# Sends one broadcast message to the given chat id.
+Send = Callable[[int], Awaitable[object]]
 
 # Telegram allows a bot ~30 messages/sec overall; stay well under it.
 _SEND_INTERVAL_SECONDS = 0.05
@@ -98,11 +103,11 @@ async def send_promo(bot: Bot, chat_id: int) -> None:
         _photo_file_id = message.photo[-1].file_id
 
 
-async def _deliver(bot: Bot, user_id: int) -> str:
-    """Send the promo to one user. Returns "sent", "blocked" or "failed"."""
+async def deliver(send: Send, user_id: int) -> str:
+    """Run ``send`` for one user. Returns "sent", "blocked" or "failed"."""
     for _ in range(3):
         try:
-            await send_promo(bot, user_id)
+            await send(user_id)
             return "sent"
         except TelegramRetryAfter as exc:
             await asyncio.sleep(exc.retry_after + 1)
@@ -111,12 +116,36 @@ async def _deliver(bot: Bot, user_id: int) -> str:
         except TelegramBadRequest as exc:
             if "chat not found" in str(exc).lower():
                 return "blocked"
-            logger.warning("Promo to %s rejected: %s", user_id, exc)
+            logger.warning("Broadcast to %s rejected: %s", user_id, exc)
             return "failed"
         except TelegramAPIError:
-            logger.exception("Promo to %s failed", user_id)
+            logger.exception("Broadcast to %s failed", user_id)
             return "failed"
     return "failed"
+
+
+async def broadcast(send: Send, user_ids: list[int]) -> tuple[int, int, int]:
+    """Run ``send`` for every user, paced under Telegram's rate limit.
+
+    Users who blocked the bot are marked so later broadcasts skip them.
+    Returns (sent, blocked, failed).
+    """
+    sent = failed = 0
+    blocked: list[int] = []
+    for user_id in user_ids:
+        result = await deliver(send, user_id)
+        if result == "sent":
+            sent += 1
+        elif result == "blocked":
+            blocked.append(user_id)
+        else:
+            failed += 1
+        await asyncio.sleep(_SEND_INTERVAL_SECONDS)
+
+    async with async_session_factory() as session:
+        await SubscriberRepository(session).mark_blocked(blocked)
+        await session.commit()
+    return sent, len(blocked), failed
 
 
 async def run_broadcast(bot: Bot, day: date) -> PromoBroadcast | None:
@@ -139,23 +168,14 @@ async def run_broadcast(bot: Bot, day: date) -> PromoBroadcast | None:
         record_id = record.id
 
     logger.info("Promo broadcast for %s: %d recipients.", day, len(user_ids))
-    sent = failed = 0
-    blocked: list[int] = []
-    for user_id in user_ids:
-        result = await _deliver(bot, user_id)
-        if result == "sent":
-            sent += 1
-        elif result == "blocked":
-            blocked.append(user_id)
-        else:
-            failed += 1
-        await asyncio.sleep(_SEND_INTERVAL_SECONDS)
+    sent, blocked, failed = await broadcast(
+        lambda chat_id: send_promo(bot, chat_id), user_ids
+    )
 
     async with async_session_factory() as session:
-        await SubscriberRepository(session).mark_blocked(blocked)
         record = await session.get(PromoBroadcast, record_id)
         record.sent = sent
-        record.blocked = len(blocked)
+        record.blocked = blocked
         record.failed = failed
         record.finished_at = func.now()
         await session.commit()
@@ -163,7 +183,7 @@ async def run_broadcast(bot: Bot, day: date) -> PromoBroadcast | None:
 
     logger.info(
         "Promo broadcast for %s done: %d sent, %d blocked, %d failed.",
-        day, sent, len(blocked), failed,
+        day, sent, blocked, failed,
     )
     return record
 

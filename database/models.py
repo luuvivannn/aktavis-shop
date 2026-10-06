@@ -12,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -90,6 +91,16 @@ class Product(Base):
     )
     channel_chat_id: Mapped[int | None] = mapped_column(
         BigInteger, default=None
+    )
+
+    # Hourly product cards (bot/cards.py): the weekday (0 = Monday) this
+    # product's card goes out, and Telegram's file_id for its main photo
+    # once uploaded, so later sends don't re-upload. card_file_path is the
+    # photo that file_id belongs to — a new main photo means a new upload.
+    card_weekday: Mapped[int | None] = mapped_column(Integer, default=None)
+    card_file_id: Mapped[str | None] = mapped_column(String(255), default=None)
+    card_file_path: Mapped[str | None] = mapped_column(
+        String(255), default=None
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -200,4 +211,33 @@ class PromoBroadcast(Base):
         return (
             f"<PromoBroadcast {self.promo_date} "
             f"{self.sent}/{self.recipients} sent>"
+        )
+
+
+class CardSend(Base):
+    """One row per hourly product card sent out. The unique (date, hour)
+    keeps a redeploy from sending a second card in the same hour, and the
+    day's rows tell which of today's products already went out."""
+
+    __tablename__ = "card_sends"
+    __table_args__ = (UniqueConstraint("send_date", "slot_hour"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    send_date: Mapped[date] = mapped_column(Date, index=True)
+    slot_hour: Mapped[int] = mapped_column(Integer)
+    product_id: Mapped[int] = mapped_column(Integer)
+
+    recipients: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CardSend {self.send_date} {self.slot_hour:02d}:00 "
+            f"product={self.product_id} {self.sent}/{self.recipients}>"
         )

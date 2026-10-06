@@ -7,6 +7,7 @@ from database.db import (
 )
 from database.models import (
     Base,
+    CardSend,
     Product,
     ProductCategory,
     ProductStatus,
@@ -25,6 +26,7 @@ from database.repositories import (
 
 __all__ = [
     "Base",
+    "CardSend",
     "Product",
     "ProductCategory",
     "ProductNotAvailableError",

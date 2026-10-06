@@ -635,6 +635,10 @@ async def _run_migrations() -> None:
         # Sale price tracking: original price shown as strikethrough when discounted.
         "ALTER TABLE products ADD COLUMN price_eur_original INTEGER",
         "ALTER TABLE products ADD COLUMN price_pln_original INTEGER",
+        # Hourly product cards: weekday slot + cached Telegram photo file_id.
+        "ALTER TABLE products ADD COLUMN card_weekday INTEGER",
+        "ALTER TABLE products ADD COLUMN card_file_id VARCHAR(255)",
+        "ALTER TABLE products ADD COLUMN card_file_path VARCHAR(255)",
     ]
     for stmt in statements:
         try:
