@@ -73,6 +73,7 @@ async def init_db(*, seed: bool = True) -> None:
     await _migrate_curated_hides_to_hidden()
     await _mark_confirmed_sold()
     await _fix_sales_ledger()
+    await _fix_known_misparsed_prices()
 
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -522,6 +523,43 @@ async def _fix_sales_ledger() -> None:
             "Sales ledger fix: %d test sales deleted, %d manual sales added.",
             removed, added,
         )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Prices the parser took from the story instead of the "Цена" line,
+# keyed by channel message_id: (wrong EUR, right EUR). Only a row still
+# at the wrong price is touched, so a later edit of the post wins. No
+# strikethrough "original" price is set — it was never a discount.
+# ──────────────────────────────────────────────────────────────────────
+_MISPARSED_EUR_PRICES: dict[int, tuple[int, int]] = {
+    852: (1100, 650),  # Moncler Maya Jacket — "куплена новой за 1100€"
+}
+
+
+async def _fix_known_misparsed_prices() -> None:
+    fixed = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(
+            Product.channel_message_id.in_(_MISPARSED_EUR_PRICES),
+        )
+        for product in (await session.scalars(stmt)).all():
+            wrong, right = _MISPARSED_EUR_PRICES[product.channel_message_id]
+            if product.price_eur != wrong:
+                continue
+            logger.info(
+                "Misparsed-price fix: product id=%s (%s %s, channel_msg=%s) "
+                "%s€ → %s€",
+                product.id, product.brand, product.name,
+                product.channel_message_id, wrong, right,
+            )
+            product.price_eur = right
+            fixed += 1
+
+        if fixed:
+            await session.commit()
+
+    if fixed:
+        logger.info("Misparsed-price fix: %d products repriced.", fixed)
 
 
 # ──────────────────────────────────────────────────────────────────────

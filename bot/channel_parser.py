@@ -160,6 +160,9 @@ PRICE_EUR_RE = re.compile(r"(\d[\d\s]*)\s*€")
 # €/zł/USDT amount was found anywhere in the post — the shop prices in EUR, so
 # the bare number is read as euros.
 PRICE_BARE_RE = re.compile(r"Цена\s*[:：\-]?\s*(\d[\d\s]*)", re.IGNORECASE)
+# A line that starts with "Цена" (emoji/Markdown prefix allowed). Its amount is
+# the price even when the story above quotes others ("куплена за 1100€").
+PRICE_LINE_RE = re.compile(r"^[^\w\n]*Цена[^\n]*", re.IGNORECASE | re.MULTILINE)
 NOTE_RE = re.compile(
     r"\*?\s*Примечание\s*[:：]\s*([^\n]+(?:\n(?!Связь|Цена|#|$)[^\n]+)*)",
     re.IGNORECASE,
@@ -249,6 +252,18 @@ def _detect_category(title: str) -> ProductCategory:
 
 
 def _parse_price(text: str) -> tuple[int | None, int | None, int | None]:
+    # The "Цена" line wins over amounts elsewhere in the post: a Moncler post
+    # said "куплена новой за 1100€" above "Цена : 650💶", and the first € in
+    # the text became the price. Posts without such a line keep the old
+    # whole-text search.
+    for line in PRICE_LINE_RE.finditer(text):
+        prices = _parse_amounts(line.group(0))
+        if any(p is not None for p in prices):
+            return prices
+    return _parse_amounts(text)
+
+
+def _parse_amounts(text: str) -> tuple[int | None, int | None, int | None]:
     pln: int | None = None
     if (m := PRICE_PLN_RE.search(text)):
         try:
