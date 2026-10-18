@@ -45,3 +45,6 @@ messages*.html
 /images/
 /round_video_messages/
 /video_files/
+
+# Mini App: dependencies are installed locally; the build (webapp/dist) is committed
+node_modules/

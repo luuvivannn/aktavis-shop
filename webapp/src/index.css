@@ -1,0 +1,192 @@
+@import "tailwindcss";
+/* The committed build must not feed its own old class names back in. */
+@source not "../dist";
+@import "@fontsource-variable/inter";
+@import "@fontsource/cormorant-garamond/600.css";
+
+/* The AKTAVIS.EU wordmark: the purple comic lettering of the old Mini App. */
+@font-face {
+  font-family: "VTC Letterer Pro";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/vtc_letterer_pro.woff") format("woff");
+}
+
+/* Dark mode follows the `dark` class on <html>, set from Telegram's theme
+   (lib/telegram.ts), with the system setting as the fallback. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* One palette for every screen. Colours are tokens, components never use
+   raw hex values. The accent is the raspberry pink of the AKTAVIS logo. */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --muted: #f6f3f5;
+  --border: #ece4e9;
+  --text: #1a1418;
+  --text-2: #6a5f66;
+  --text-3: #988c94;
+  --accent: #c2185b;
+  --accent-tint: #fce8f1;
+  --accent-border: #ea9cc0;
+  --accent-ink: #5e0b30;
+  --on-accent: #ffffff;
+  /* AKTAVIS.EU wordmark: the old purple, flowing into the accent pink. */
+  --brand-gradient: linear-gradient(100deg, #6a1fb0 0%, #9b3fd6 45%, #d23a8c 100%);
+  --brand-glow: drop-shadow(0 1px 0 rgb(255 255 255 / 0.6)) drop-shadow(0 2px 6px rgb(123 47 190 / 0.25));
+  --like: #e5484d;
+  --sale: #e5484d;
+  --shadow: 0 8px 24px rgb(60 10 40 / 0.1);
+  /* Background photo (pink glitter and champagne glasses): washed out into
+     a soft pink haze, strongest at the top and calming down the page. */
+  --photo-opacity: 0.7;
+  --photo-filter: brightness(1.35) saturate(1.2) contrast(0.85);
+  --photo-scrim: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.88) 0%,
+    rgb(255 255 255 / 0.2) 14%,
+    rgb(255 255 255 / 0.35) 45%,
+    rgb(255 255 255 / 0.7) 100%
+  );
+}
+
+.dark {
+  --bg: #0f0b0e;
+  --surface: #1a1418;
+  --muted: #241c21;
+  --border: #33282f;
+  --text: #f5eff3;
+  --text-2: #b3a6ae;
+  --text-3: #85787f;
+  --accent: #d93682;
+  --accent-tint: #3a1027;
+  --accent-border: #8c2d5e;
+  --accent-ink: #ffd8ea;
+  --on-accent: #ffffff;
+  --brand-gradient: linear-gradient(100deg, #a86ef0 0%, #c48cf6 45%, #ff6fae 100%);
+  --brand-glow: drop-shadow(0 2px 8px rgb(185 138 240 / 0.35));
+  --like: #ff6369;
+  --sale: #ff6369;
+  --shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  --photo-opacity: 1;
+  --photo-filter: saturate(1.1) brightness(0.8);
+  /* Darker over the glasses at the top, where the header text sits. */
+  --photo-scrim: linear-gradient(
+    to bottom,
+    rgb(15 11 14 / 0.92) 0%,
+    rgb(15 11 14 / 0.45) 16%,
+    rgb(15 11 14 / 0.5) 40%,
+    rgb(15 11 14 / 0.4) 60%,
+    rgb(15 11 14 / 0.78) 100%
+  );
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-ink-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-line: var(--accent-border);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+  --color-like: var(--like);
+  --color-sale: var(--sale);
+  --shadow-float: var(--shadow);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter Variable",
+    "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html,
+body {
+  color: var(--text);
+  /* Nothing may scroll the page sideways (clip, unlike hidden, keeps
+     position: sticky working). */
+  overflow-x: clip;
+}
+
+/* Only html gets a solid colour: a body background would paint over the
+   photo layer (.backdrop sits at z-index -1). */
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+.wordmark {
+  font-family: "VTC Letterer Pro", cursive;
+  letter-spacing: 0.03em;
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: var(--brand-glow);
+}
+
+/* The photo behind every screen. Its top fades into --bg so it meets
+   Telegram's header (painted in --bg) without a seam. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--bg);
+}
+.backdrop::before,
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.backdrop::before {
+  background: url("./assets/bg.jpg") center / cover no-repeat;
+  opacity: var(--photo-opacity);
+  filter: var(--photo-filter);
+}
+.backdrop::after {
+  background: var(--photo-scrim);
+}
+
+/* Telegram passes the safe-area insets as CSS variables (Bot API 8.0+). */
+.pb-safe {
+  padding-bottom: max(
+    env(safe-area-inset-bottom),
+    var(--tg-safe-area-inset-bottom, 0px)
+  );
+}
+
+/* Bottom-pinned bars. Telegram can make the webview taller than what is
+   on screen (the part under the fold is hidden); it reports the visible
+   height in --tg-viewport-stable-height, so lift the bar by the difference. */
+.bottom-visible {
+  bottom: max(0px, calc(100vh - var(--tg-viewport-stable-height, 100vh)));
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

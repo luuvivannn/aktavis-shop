@@ -14,26 +14,31 @@ from config import PHOTOS_DIR
 from database import dispose_engine, init_db
 
 
-class NoCacheStaticFiles(StaticFiles):
-    """Serves Mini App assets with no-store cache headers.
+class MiniAppStaticFiles(StaticFiles):
+    """Serves the built Mini App (webapp/dist).
 
-    Telegram WebViews (especially Desktop) cache JS/CSS aggressively
-    and ignore conventional revalidation. no-store guarantees every
-    fetch hits the server, so a deploy is immediately visible without
-    asking users to clear cache.
+    Telegram WebViews (especially Desktop) cache aggressively and ignore
+    conventional revalidation, so index.html is never cached: a deploy is
+    visible on the next open. Vite puts a content hash in every file name
+    under assets/, so those can be cached for good.
     """
 
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+        if path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-WEBAPP_DIR = PROJECT_ROOT / "webapp"
+# `npm run build` in webapp/ writes here; the build is committed, so the
+# server needs no Node.
+WEBAPP_DIR = PROJECT_ROOT / "webapp" / "dist"
 
 
 @asynccontextmanager
@@ -84,7 +89,7 @@ def create_app() -> FastAPI:
     if WEBAPP_DIR.exists():
         app.mount(
             "/webapp",
-            NoCacheStaticFiles(directory=WEBAPP_DIR, html=True),
+            MiniAppStaticFiles(directory=WEBAPP_DIR, html=True),
             name="webapp",
         )
     else:
