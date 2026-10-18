@@ -190,6 +190,22 @@ SKIP_DESC_PATTERNS = (
     "t.me/",
 )
 
+# The shop-wide footer under every post since October 2026 — «🌎Доставка по
+# всему миру🌎», «‼️Весь ассортимент в удобном приложении‼️», «🔥ЛУЧШИЙ
+# РЕСЕЙЛ ЧАТ🔥». It says nothing about the item, so it stays out of the
+# Mini App description. Any case, any emoji around it.
+FOOTER_LINE_RE = re.compile(
+    r"доставка\s+по\s+всему\s+миру|в\s+удобном\s+приложении|ресейл\s*-?\s*чат",
+    re.IGNORECASE,
+)
+
+
+def strip_footer_lines(description: str) -> str:
+    """A saved description minus the shop footer lines, for products stored
+    before :data:`FOOTER_LINE_RE` existed."""
+    kept = [line for line in description.split("\n") if not FOOTER_LINE_RE.search(line)]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
 
 @dataclass
 class ParsedProduct:
@@ -303,7 +319,7 @@ def _build_description(text: str) -> str:
         if not stripped:
             cleaned_lines.append("")
             continue
-        if any(p in stripped for p in SKIP_DESC_PATTERNS):
+        if any(p in stripped for p in SKIP_DESC_PATTERNS) or FOOTER_LINE_RE.search(stripped):
             continue
         # Drop Markdown bold markers (`**`) the seller left in the caption.
         stripped = re.sub(r"[ \t]{2,}", " ", re.sub(r"\*+", "", stripped)).strip()

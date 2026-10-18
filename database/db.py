@@ -59,6 +59,8 @@ async def init_db(*, seed: bool = True) -> None:
     # Strip Markdown ``**`` the sellers leave in captions from existing rows
     # (description/condition/size/note) so the Mini App shows clean text.
     await _strip_markdown_from_text_fields()
+    # Same for the shop footer added under every post in October 2026.
+    await _strip_footer_from_descriptions()
     # Runs before dedup so both sides of a potential duplicate pair carry the
     # same brand/name split.
     await _redetect_unknown_brands()
@@ -229,6 +231,31 @@ async def _strip_markdown_from_text_fields() -> None:
 
     if fixed:
         logger.info("Markdown cleanup: stripped ** from %d products.", fixed)
+
+
+async def _strip_footer_from_descriptions() -> None:
+    """Drop the shop footer («Доставка по всему миру», «Весь ассортимент в
+    удобном приложении», «ЛУЧШИЙ РЕСЕЙЛ ЧАТ») from descriptions saved before
+    the parser learned to skip it. Idempotent — a row only changes when one
+    of its lines matches."""
+    from bot.channel_parser import strip_footer_lines
+
+    fixed = 0
+    async with async_session_factory() as session:
+        stmt = select(Product).where(Product.description != "")
+        for product in (await session.scalars(stmt)).all():
+            if not product.description:
+                continue
+            cleaned = strip_footer_lines(product.description)
+            if cleaned != product.description:
+                product.description = cleaned
+                fixed += 1
+
+        if fixed:
+            await session.commit()
+
+    if fixed:
+        logger.info("Footer cleanup: %d descriptions lost the shop footer.", fixed)
 
 
 def _dedup_key(p: Product) -> tuple[str, str, str, int]:
