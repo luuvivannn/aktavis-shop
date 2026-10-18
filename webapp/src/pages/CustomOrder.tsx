@@ -1,4 +1,3 @@
-import customOrderBanner from "@/assets/custom_order_banner.jpg";
 import { ActionButton, BulletList, Card, Heading, InfoRows, PageHeader } from "@/components/ui";
 import { REVIEWS_URL, sellerLink } from "@/lib/shop";
 import { haptic, openLink } from "@/lib/telegram";
@@ -19,26 +18,23 @@ export function CustomOrder() {
     <>
       <PageHeader title="Под заказ" subtitle="Не нашли нужное в каталоге? Найдём и привезём под вас." />
       <div className="space-y-3 px-4">
-        <Card className="overflow-hidden p-0">
-          <img src={customOrderBanner} alt="" className="w-full" />
-          <div className="p-5">
-            <Heading>Индивидуальный заказ</Heading>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
-              Мы принимаем персональные запросы и готовы оказать помощь в поиске интересующей вас позиции.
-            </p>
-            <p className="mb-5 mt-3 text-[15px] leading-relaxed text-ink-2">
-              Подбор изделий от ведущих мировых брендов осуществляется по стоимости, значительно более выгодной
-              по сравнению с бутиками, с полным сопровождением сделки.
-            </p>
-            <ActionButton
-              onClick={() => {
-                haptic("medium");
-                openLink(sellerLink(MESSAGE));
-              }}
-            >
-              Обсудить заказ
-            </ActionButton>
-          </div>
+        <Card>
+          <Heading>Индивидуальный заказ</Heading>
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+            Мы принимаем персональные запросы и готовы оказать помощь в поиске интересующей вас позиции.
+          </p>
+          <p className="mb-5 mt-3 text-[15px] leading-relaxed text-ink-2">
+            Подбор изделий от ведущих мировых брендов осуществляется по стоимости, значительно более выгодной
+            по сравнению с бутиками, с полным сопровождением сделки.
+          </p>
+          <ActionButton
+            onClick={() => {
+              haptic("medium");
+              openLink(sellerLink(MESSAGE));
+            }}
+          >
+            Обсудить заказ
+          </ActionButton>
         </Card>
 
         <Card>
