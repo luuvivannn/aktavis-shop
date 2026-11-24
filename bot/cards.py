@@ -1,10 +1,10 @@
 """Hourly product cards.
 
 Every in-stock product gets a weekday, and on that day the bot DMs its
-card — photo, name, size, condition, price and an «Заказать» button — to
-every subscriber of the promo. One card an hour from CARDS_START_HOUR
-(Warsaw time) until the day's products run out; the daily promo keeps its
-own hour.
+card — photo, name, size, condition, price, an «Заказать» button and the
+legit-check button — to every subscriber of the promo. One card an hour
+from CARDS_START_HOUR (Warsaw time) until the day's products run out; the
+daily promo keeps its own hour.
 
 Days are kept even: a new product joins the lightest day, a sold one drops
 out, and when a day falls two behind the heaviest day hands one over. Once
@@ -41,7 +41,13 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.backup import backup_chat_id
-from bot.promo import PROMO_TZ, SELLER_URL, broadcast
+from bot.promo import (
+    LEGIT_CHECK_TEXT,
+    LEGIT_CHECK_URL,
+    PROMO_TZ,
+    SELLER_URL,
+    broadcast,
+)
 from config import (
     ADMIN_IDS,
     CARDS_ENABLED,
@@ -174,7 +180,12 @@ class Card:
         self.caption = card_caption(product)
         self.keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Заказать", url=order_url(product))]
+                [InlineKeyboardButton(text="Заказать", url=order_url(product))],
+                [
+                    InlineKeyboardButton(
+                        text=LEGIT_CHECK_TEXT, url=LEGIT_CHECK_URL
+                    )
+                ],
             ]
         )
         self._uploaded = False

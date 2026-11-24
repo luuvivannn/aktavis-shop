@@ -48,6 +48,11 @@ PROMO_PHOTO = Path(__file__).resolve().parent / "assets" / "promo.jpg"
 # The seller account buyers write to.
 SELLER_URL = "https://t.me/aktavis_eu"
 
+# AKTAVIS LEGIT CHECK — the separate paid authenticity-check bot. Same
+# button under the daily promo and under every product card.
+LEGIT_CHECK_TEXT = "🔎 Легит-чек: проверить вашу вещь"
+LEGIT_CHECK_URL = "https://t.me/aktavis_legit_check_bot"
+
 PROMO_CAPTION = (
     "💸 <b>Выкупаю ваши вещи в день обращения</b>\n\n"
     "Сразу пишите цену, состояние и размер, так отвечу быстрее\n\n"
@@ -60,7 +65,7 @@ PROMO_CAPTION = (
 
 PROMO_BUTTONS: list[tuple[str, str]] = [
     ("Заказать", SELLER_URL),
-    ("Проверить вещь на оригинальность", SELLER_URL),
+    (LEGIT_CHECK_TEXT, LEGIT_CHECK_URL),
     ("Отзывы", "https://t.me/actavis_feedback"),
     ("TikTok", "https://www.tiktok.com/@aktaviss"),
     ("Instagram", "https://www.instagram.com/aktavis.eu"),
